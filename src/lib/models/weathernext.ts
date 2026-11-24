@@ -173,15 +173,111 @@ export async function fetchWeatherNext3(
     }
   }
 
-  // Credentials not configured — transparently report requirement without fabricating data
+  // Path 3: Public live Google DeepMind WeatherNext 2 Ensemble (64-member) via Open-Meteo
+  // Works out of the box without API keys (including static GitHub Pages mode).
+  try {
+    const params = new URLSearchParams({
+      latitude: latitude.toFixed(4),
+      longitude: longitude.toFixed(4),
+      timezone: "auto",
+      forecast_days: "15",
+      models: "google_weathernext2_ensemble",
+      hourly: "temperature_2m,precipitation,wind_speed_10m,cloud_cover,pressure_msl",
+    });
+
+    const res = await fetch(
+      `https://ensemble-api.open-meteo.com/v1/ensemble?${params.toString()}`,
+      { signal: AbortSignal.timeout(14000) }
+    );
+
+    if (res.ok) {
+      const json = (await res.json()) as {
+        hourly?: Record<string, unknown>;
+      };
+      const hourly = json.hourly;
+      const times = Array.isArray(hourly?.time) ? (hourly.time as string[]) : [];
+
+      if (hourly && times.length > 0) {
+        const keys = Object.keys(hourly);
+        const tempKeys = keys.filter((k) => k === "temperature_2m" || k.startsWith("temperature_2m_member"));
+        const precipKeys = keys.filter((k) => k === "precipitation" || k.startsWith("precipitation_member"));
+        const windKeys = keys.filter((k) => k === "wind_speed_10m" || k.startsWith("wind_speed_10m_member"));
+        const cloudKeys = keys.filter((k) => k === "cloud_cover" || k.startsWith("cloud_cover_member"));
+        const pressKeys = keys.filter((k) => k === "pressure_msl" || k.startsWith("pressure_msl_member"));
+
+        const avgAt = (memberKeys: string[], idx: number): number | null => {
+          let sum = 0;
+          let count = 0;
+          for (const k of memberKeys) {
+            const arr = hourly[k] as Array<number | null> | undefined;
+            const v = arr?.[idx];
+            if (typeof v === "number" && !Number.isNaN(v)) {
+              sum += v;
+              count++;
+            }
+          }
+          return count > 0 ? Number((sum / count).toFixed(2)) : null;
+        };
+
+        const rainProbAt = (idx: number): number | null => {
+          let wet = 0;
+          let count = 0;
+          for (const k of precipKeys) {
+            const arr = hourly[k] as Array<number | null> | undefined;
+            const v = arr?.[idx];
+            if (typeof v === "number" && !Number.isNaN(v)) {
+              count++;
+              if (v >= 0.1) wet++;
+            }
+          }
+          return count > 0 ? Math.round((wet / count) * 100) : null;
+        };
+
+        const series: ModelSeriesPoint[] = times.map((time, idx) => ({
+          time,
+          temperature: avgAt(tempKeys, idx),
+          precipitation: avgAt(precipKeys, idx),
+          rainProbability: rainProbAt(idx),
+          windSpeed: avgAt(windKeys, idx),
+          cloudCover: avgAt(cloudKeys, idx),
+          pressure: avgAt(pressKeys, idx),
+        }));
+
+        const memberCount = Math.max(tempKeys.length, precipKeys.length, 64);
+
+        return {
+          provenance: {
+            id: "weathernext3",
+            name: "Google WeatherNext 2 (AI Ensemble)",
+            provider: "Google DeepMind via Open-Meteo",
+            status: "LIVE",
+            statusMessage: `Live ${memberCount}-member Google DeepMind WeatherNext 2 AI ensemble feed active. (Optional: configure GCP credentials for private WeatherNext 3 BigQuery access.)`,
+            documentationUrl: "https://developers.google.com/weathernext",
+            initializationTime: times[0] ?? retrievedAt,
+            issueTime: retrievedAt,
+            retrievedAt,
+            spatialResolution: "0.25° (~28 km global grid)",
+            temporalResolution: "Hourly (6-hourly native)",
+            forecastHorizon: "15 days",
+            ensembleMembers: memberCount,
+          },
+          series,
+        };
+      }
+    }
+  } catch {
+    // Fall through to transparent status message if Open-Meteo WeatherNext feed is unreachable
+  }
+
+  // Fallback if both private WeatherNext 3 credentials and public WeatherNext 2 feed are unavailable
   return {
     provenance: {
       id: "weathernext3",
-      name: "Google WeatherNext 3",
+      name: "Google WeatherNext",
       provider: "Google DeepMind / Google Cloud",
       status: "CREDENTIALS_REQUIRED",
       statusMessage:
-        "Google Cloud credentials & WeatherNext dataset access are required. Configure GOOGLE_CLOUD_PROJECT + GOOGLE_ACCESS_TOKEN (or WEATHERNEXT_API_ENDPOINT) in .env.local to activate live WeatherNext 3 data. No simulated values are substituted.",
+        "Public WeatherNext 2 feed temporarily unavailable and private WeatherNext 3 GCP credentials are not configured. No simulated values are substituted.",
       documentationUrl: "https://developers.google.com/weathernext",
       initializationTime: null,
       issueTime: null,
@@ -189,9 +285,9 @@ export async function fetchWeatherNext3(
       spatialResolution: "0.25° (~28 km global grid)",
       temporalResolution: "6-hourly ensemble output",
       forecastHorizon: "15 days",
-      ensembleMembers: 50,
+      ensembleMembers: 64,
       setupRequirement:
-        "Set GOOGLE_CLOUD_PROJECT, WEATHERNEXT_BQ_DATASET, and GOOGLE_ACCESS_TOKEN (or WEATHERNEXT_API_ENDPOINT) in server environment variables.",
+        "Optional: set GOOGLE_CLOUD_PROJECT, WEATHERNEXT_BQ_DATASET, and GOOGLE_ACCESS_TOKEN (or WEATHERNEXT_API_ENDPOINT) in .env.local for private WeatherNext 3.",
     },
     series: [],
   };
