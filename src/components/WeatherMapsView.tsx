@@ -8,6 +8,7 @@ import {
   KeyRound,
   Layers,
   Loader2,
+  Map as MapIcon,
   Satellite,
   Thermometer,
   Wind,
@@ -17,7 +18,7 @@ import { apiFetchMapConfig, apiFetchWeatherGrid } from "@/lib/client-api";
 import { UserSettings, WeatherGridNode, WeatherIntelligencePayload } from "@/types/weather";
 
 type LayerId = "temperature" | "precipitation" | "clouds" | "wind" | "pressure";
-type BasemapStyle = "dark" | "satellite";
+type BasemapStyle = "osm" | "dark" | "satellite";
 
 interface MapProviderConfig {
   openWeatherEnabled: boolean;
@@ -47,7 +48,7 @@ export function WeatherMapsView({ payload, settings }: Props) {
   const markersGroupRef = useRef<any>(null);
 
   const [layer, setLayer] = useState<LayerId>("temperature");
-  const [basemap, setBasemap] = useState<BasemapStyle>("dark");
+  const [basemap, setBasemap] = useState<BasemapStyle>("osm");
   const [providerConfig, setProviderConfig] = useState<MapProviderConfig>({
     openWeatherEnabled: false,
     mapboxEnabled: false,
@@ -110,7 +111,7 @@ export function WeatherMapsView({ payload, settings }: Props) {
     };
   }, [location.latitude, location.longitude]);
 
-  // Update basemap tile layer (Mapbox / MapTiler via server proxy if configured, else CARTO Dark)
+  // Update basemap tile layer (OpenStreetMap Standard, CARTO Dark, or Mapbox/MapTiler Satellite)
   useEffect(() => {
     const updateBasemap = async () => {
       const L = (await import("leaflet")).default;
@@ -119,20 +120,22 @@ export function WeatherMapsView({ payload, settings }: Props) {
         leafletRef.current.removeLayer(baseLayerRef.current);
       }
 
-      let tileUrl = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-      let attribution = "&copy; OpenStreetMap &copy; CARTO | Regional Grid: Open-Meteo";
+      let tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+      let attribution =
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors | Regional Grid: Open-Meteo';
 
-      if (providerConfig.mapboxEnabled) {
-        const style = basemap === "satellite" ? "satellite-streets-v12" : "dark-v11";
-        tileUrl = `/api/map/tiles/mapbox/${style}/{z}/{x}/{y}`;
+      if (basemap === "dark") {
+        tileUrl = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
+        attribution = "&copy; OpenStreetMap contributors &copy; CARTO | Regional Grid: Open-Meteo";
+      } else if (basemap === "satellite" && providerConfig.mapboxEnabled) {
+        tileUrl = `/api/map/tiles/mapbox/satellite-streets-v12/{z}/{x}/{y}`;
         attribution = "&copy; Mapbox &copy; OpenStreetMap";
-      } else if (providerConfig.maptilerEnabled) {
-        const style = basemap === "satellite" ? "hybrid" : "streets-v2-dark";
-        tileUrl = `/api/map/tiles/maptiler/${style}/{z}/{x}/{y}`;
+      } else if (basemap === "satellite" && providerConfig.maptilerEnabled) {
+        tileUrl = `/api/map/tiles/maptiler/hybrid/{z}/{x}/{y}`;
         attribution = "&copy; MapTiler &copy; OpenStreetMap";
       }
 
-      baseLayerRef.current = L.tileLayer(tileUrl, { attribution, maxZoom: 18 }).addTo(
+      baseLayerRef.current = L.tileLayer(tileUrl, { attribution, maxZoom: 19 }).addTo(
         leafletRef.current
       );
       baseLayerRef.current.bringToBack();
@@ -238,10 +241,8 @@ export function WeatherMapsView({ payload, settings }: Props) {
             Interactive Weather Map — {location.name}
           </h1>
           <p className="text-xs text-slate-400">
-            Real regional spatial grid +{" "}
-            {providerConfig.openWeatherEnabled
-              ? "Live OpenWeatherMap heatmap tile overlay active"
-              : "CARTO Dark basemap (add OPENWEATHER_API_KEY or MAPBOX_ACCESS_TOKEN in .env.local for heatmap/satellite tiles)"}
+            OpenStreetMap &amp; CARTO Dark basemaps + real regional spatial grid
+            {providerConfig.openWeatherEnabled ? " + live OpenWeatherMap heatmap tiles" : ""}
           </p>
         </div>
 
@@ -270,39 +271,65 @@ export function WeatherMapsView({ payload, settings }: Props) {
             );
           })}
 
-          {hasSatelliteBasemap && (
+          <div className="inline-flex rounded-xl bg-slate-900/90 border border-slate-700 p-0.5 ml-1">
             <button
-              onClick={() => setBasemap((b) => (b === "dark" ? "satellite" : "dark"))}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
-                basemap === "satellite"
-                  ? "bg-indigo-500/25 border-indigo-400/50 text-indigo-100"
-                  : "bg-slate-900/70 border-slate-800 text-slate-300"
+              onClick={() => setBasemap("osm")}
+              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                basemap === "osm"
+                  ? "bg-emerald-500/25 text-emerald-100"
+                  : "text-slate-400 hover:text-slate-200"
               }`}
             >
-              <Satellite className="w-3.5 h-3.5" />
-              {basemap === "satellite" ? "Satellite On" : "Satellite"}
+              <MapIcon className="w-3.5 h-3.5" />
+              OpenStreetMap
             </button>
-          )}
+            <button
+              onClick={() => setBasemap("dark")}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                basemap === "dark"
+                  ? "bg-cyan-500/25 text-cyan-100"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              Dark
+            </button>
+            {hasSatelliteBasemap && (
+              <button
+                onClick={() => setBasemap("satellite")}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  basemap === "satellite"
+                    ? "bg-indigo-500/25 text-indigo-100"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Satellite className="w-3.5 h-3.5" />
+                Satellite
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Map Provider Status Strip */}
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300">
-          <KeyRound className="w-3 h-3 text-cyan-400" />
-          OpenWeatherMap Tiles:{" "}
-          <strong className={providerConfig.openWeatherEnabled ? "text-emerald-400" : "text-amber-300"}>
-            {providerConfig.openWeatherEnabled ? "ACTIVE" : "NOT SET"}
+          <MapIcon className="w-3 h-3 text-emerald-400" />
+          Basemap:{" "}
+          <strong className="text-emerald-300">
+            {basemap === "osm"
+              ? "OpenStreetMap Standard"
+              : basemap === "satellite"
+              ? providerConfig.mapboxEnabled
+                ? "Mapbox Satellite"
+                : "MapTiler Satellite"
+              : "CARTO Dark"}
           </strong>
         </span>
         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/80 border border-slate-800 text-slate-300">
-          Basemap:{" "}
-          <strong className="text-cyan-300">
-            {providerConfig.mapboxEnabled
-              ? "Mapbox"
-              : providerConfig.maptilerEnabled
-              ? "MapTiler"
-              : "CARTO Dark (Free)"}
+          <KeyRound className="w-3 h-3 text-cyan-400" />
+          OpenWeatherMap Heatmap:{" "}
+          <strong className={providerConfig.openWeatherEnabled ? "text-emerald-400" : "text-slate-400"}>
+            {providerConfig.openWeatherEnabled ? "ACTIVE" : "OPTIONAL"}
           </strong>
         </span>
       </div>

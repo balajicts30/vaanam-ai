@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   Cloud,
   ExternalLink,
+  Map as MapIcon,
   Maximize2,
   Minimize2,
   Pause,
@@ -28,12 +29,14 @@ export function LiveRadarView({ payload, settings }: Props) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
+  const baseLayerRef = useRef<any>(null);
   const overlayLayerRef = useRef<any>(null);
 
   const [radarData, setRadarData] = useState<RainViewerPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"radar" | "satellite" | "zoomearth">("radar");
+  const [basemap, setBasemap] = useState<"osm" | "dark">("osm");
   const [playing, setPlaying] = useState(true);
   const [frameIdx, setFrameIdx] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -86,10 +89,18 @@ export function LiveRadarView({ payload, settings }: Props) {
         zoomControl: true,
       });
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-        attribution: "&copy; OpenStreetMap &copy; CARTO | Radar: RainViewer",
-        maxZoom: 18,
-      }).addTo(map);
+      baseLayerRef.current = L.tileLayer(
+        basemap === "osm"
+          ? "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution:
+            basemap === "osm"
+              ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors | Radar: RainViewer'
+              : "&copy; OpenStreetMap contributors &copy; CARTO | Radar: RainViewer",
+          maxZoom: 19,
+        }
+      ).addTo(map);
 
       L.circleMarker([location.latitude, location.longitude], {
         radius: 8,
@@ -113,6 +124,32 @@ export function LiveRadarView({ payload, settings }: Props) {
       }
     };
   }, [location.latitude, location.longitude, location.name, mode]);
+
+  // Switch basemap dynamically between OpenStreetMap Standard and CARTO Dark
+  useEffect(() => {
+    if (mode === "zoomearth" || !leafletMapRef.current) return;
+    const swapBasemap = async () => {
+      const L = (await import("leaflet")).default;
+      if (!leafletMapRef.current) return;
+      if (baseLayerRef.current) {
+        leafletMapRef.current.removeLayer(baseLayerRef.current);
+      }
+      baseLayerRef.current = L.tileLayer(
+        basemap === "osm"
+          ? "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution:
+            basemap === "osm"
+              ? '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors | Radar: RainViewer'
+              : "&copy; OpenStreetMap contributors &copy; CARTO | Radar: RainViewer",
+          maxZoom: 19,
+        }
+      ).addTo(leafletMapRef.current);
+      baseLayerRef.current.bringToBack();
+    };
+    swapBasemap();
+  }, [basemap, mode]);
 
   // Update active radar/satellite tile layer when frame changes
   useEffect(() => {
@@ -214,6 +251,32 @@ export function LiveRadarView({ payload, settings }: Props) {
               Zoom Earth View
             </button>
           </div>
+
+          {mode !== "zoomearth" && (
+            <div className="inline-flex rounded-xl bg-slate-900/90 border border-slate-700 p-0.5">
+              <button
+                onClick={() => setBasemap("osm")}
+                className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  basemap === "osm"
+                    ? "bg-emerald-500/25 text-emerald-100"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" />
+                OSM
+              </button>
+              <button
+                onClick={() => setBasemap("dark")}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${
+                  basemap === "dark"
+                    ? "bg-cyan-500/25 text-cyan-100"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                Dark
+              </button>
+            </div>
+          )}
 
           <a
             href={zoomEarthUrl}
