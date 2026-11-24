@@ -10,7 +10,7 @@ import {
 } from "@/types/weather";
 
 const WIDTH = 1080;
-const HEIGHT = 1350;
+const HEIGHT = 1920;
 
 function drawRoundedRect(
   ctx: CanvasRenderingContext2D,
@@ -108,7 +108,7 @@ function getConfidenceColor(conf: "HIGH" | "MODERATE" | "LOW"): string {
 }
 
 /**
- * Renders the 1080 × 1350 VAANAM AI Weather Pulse + Upcoming Weather Timeline graphic
+ * Renders the 1080 × 1920 (9:16) VAANAM AI Weather Pulse + Upcoming Weather Timeline graphic
  * onto an HTMLCanvasElement.
  */
 export function renderWeatherPulsePng(
@@ -160,18 +160,18 @@ export function renderWeatherPulsePng(
   // =========================================================================
   // A. HEADER
   // =========================================================================
-  let y = 84;
+  let y = 96;
 
   // Brand badge
   ctx.fillStyle = "#22d3ee";
-  ctx.font = "800 22px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "800 24px system-ui, -apple-system, Segoe UI, sans-serif";
   ctx.fillText("VAANAM AI  •  WEATHER PULSE", padX, y);
 
   // Status indicator pill on right
   const statusText = pulse.statusLabel;
-  ctx.font = "700 18px system-ui, -apple-system, Segoe UI, sans-serif";
-  const statusW = ctx.measureText(statusText).width + 46;
-  drawRoundedRect(ctx, WIDTH - padX - statusW, y - 26, statusW, 38, 19);
+  ctx.font = "700 19px system-ui, -apple-system, Segoe UI, sans-serif";
+  const statusW = ctx.measureText(statusText).width + 48;
+  drawRoundedRect(ctx, WIDTH - padX - statusW, y - 28, statusW, 42, 21);
   ctx.fillStyle =
     pulse.statusMode === "LIVE_RADAR"
       ? "rgba(16, 185, 129, 0.2)"
@@ -188,25 +188,25 @@ export function renderWeatherPulsePng(
 
   // Status dot
   ctx.beginPath();
-  ctx.arc(WIDTH - padX - statusW + 20, y - 7, 5, 0, Math.PI * 2);
+  ctx.arc(WIDTH - padX - statusW + 22, y - 7, 5.5, 0, Math.PI * 2);
   ctx.fillStyle = pulse.statusMode === "LIVE_RADAR" ? "#34d399" : "#22d3ee";
   ctx.fill();
 
   ctx.fillStyle = "#e2e8f0";
-  ctx.fillText(statusText, WIDTH - padX - statusW + 34, y - 1);
+  ctx.fillText(statusText, WIDTH - padX - statusW + 36, y);
 
   // Location & Timestamp
-  y += 58;
+  y += 66;
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 48px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "800 56px system-ui, -apple-system, Segoe UI, sans-serif";
   ctx.fillText(location.name, padX, y);
 
-  y += 32;
+  y += 38;
   const regionStr = [location.district, location.state, location.country]
     .filter(Boolean)
     .join(", ");
   ctx.fillStyle = "#94a3b8";
-  ctx.font = "500 22px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "500 24px system-ui, -apple-system, Segoe UI, sans-serif";
   ctx.fillText(
     `${regionStr}  •  Updated ${pulse.lastUpdatedLocal} (${location.timezone})`,
     padX,
@@ -214,7 +214,7 @@ export function renderWeatherPulsePng(
   );
 
   // Divider
-  y += 24;
+  y += 30;
   ctx.strokeStyle = "rgba(148, 163, 184, 0.16)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -225,76 +225,76 @@ export function renderWeatherPulsePng(
   // =========================================================================
   // B. MAIN WEATHER ALERT
   // =========================================================================
-  y += 26;
-  const alertBoxH = 228;
-  drawRoundedRect(ctx, padX, y, innerW, alertBoxH, 26);
+  y += 32;
+  const alertBoxH = 290;
+  drawRoundedRect(ctx, padX, y, innerW, alertBoxH, 30);
   const alertGrad = ctx.createLinearGradient(padX, y, padX + innerW, y + alertBoxH);
-  alertGrad.addColorStop(0, "rgba(14, 165, 233, 0.16)");
-  alertGrad.addColorStop(1, "rgba(15, 23, 42, 0.72)");
+  alertGrad.addColorStop(0, "rgba(14, 165, 233, 0.18)");
+  alertGrad.addColorStop(1, "rgba(15, 23, 42, 0.76)");
   ctx.fillStyle = alertGrad;
   ctx.fill();
-  ctx.strokeStyle = "rgba(34, 211, 238, 0.32)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(34, 211, 238, 0.34)";
+  ctx.lineWidth = 1.8;
   ctx.stroke();
 
   // Left: Large weather icon + temp
-  ctx.font = "72px system-ui, Apple Color Emoji, Segoe UI Emoji, sans-serif";
-  ctx.fillText(curInfo.emoji, padX + 28, y + 102);
+  ctx.font = "84px system-ui, Apple Color Emoji, Segoe UI Emoji, sans-serif";
+  ctx.fillText(curInfo.emoji, padX + 32, y + 114);
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 54px system-ui, -apple-system, Segoe UI, sans-serif";
-  ctx.fillText(formatTemp(current.temperature, settings.tempUnit), padX + 28, y + 178);
+  ctx.font = "800 64px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.fillText(formatTemp(current.temperature, settings.tempUnit), padX + 32, y + 206);
 
   ctx.fillStyle = "#94a3b8";
-  ctx.font = "600 18px system-ui, -apple-system, Segoe UI, sans-serif";
-  ctx.fillText(curInfo.shortLabel, padX + 28, y + 206);
+  ctx.font = "600 21px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.fillText(curInfo.shortLabel, padX + 32, y + 244);
 
   // Right: Headline, arrival pill, explanation, action
-  const textX = padX + 210;
-  const textW = innerW - 238;
+  const textX = padX + 230;
+  const textW = innerW - 262;
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "800 34px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "800 38px system-ui, -apple-system, Segoe UI, sans-serif";
   const headlineLines = wrapText(ctx, pulse.headline, textW, 2);
-  let textY = y + 48;
+  let textY = y + 58;
   for (const line of headlineLines) {
     ctx.fillText(line, textX, textY);
-    textY += 40;
+    textY += 46;
   }
 
   if (pulse.arrivalEstimate) {
-    ctx.font = "700 19px system-ui, -apple-system, Segoe UI, sans-serif";
-    const etaW = Math.min(textW, ctx.measureText(`⏱ ${pulse.arrivalEstimate}`).width + 28);
-    drawRoundedRect(ctx, textX, textY - 22, etaW, 32, 16);
-    ctx.fillStyle = "rgba(34, 211, 238, 0.2)";
+    ctx.font = "700 21px system-ui, -apple-system, Segoe UI, sans-serif";
+    const etaW = Math.min(textW, ctx.measureText(`⏱ ${pulse.arrivalEstimate}`).width + 32);
+    drawRoundedRect(ctx, textX, textY - 22, etaW, 38, 19);
+    ctx.fillStyle = "rgba(34, 211, 238, 0.22)";
     ctx.fill();
     ctx.fillStyle = "#67e8f9";
-    ctx.fillText(`⏱ ${pulse.arrivalEstimate}`, textX + 14, textY);
-    textY += 32;
+    ctx.fillText(`⏱ ${pulse.arrivalEstimate}`, textX + 16, textY + 4);
+    textY += 42;
   }
 
   ctx.fillStyle = "#cbd5e1";
-  ctx.font = "500 21px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "500 24px system-ui, -apple-system, Segoe UI, sans-serif";
   const expLines = wrapText(ctx, pulse.explanation, textW, 2);
   for (const line of expLines) {
-    ctx.fillText(line, textX, textY + 6);
-    textY += 27;
+    ctx.fillText(line, textX, textY + 8);
+    textY += 32;
   }
 
   ctx.fillStyle = "#22d3ee";
-  ctx.font = "600 19px system-ui, -apple-system, Segoe UI, sans-serif";
-  const actLines = wrapText(ctx, `Tip: ${pulse.actionRecommendation}`, textW, 1);
+  ctx.font = "600 22px system-ui, -apple-system, Segoe UI, sans-serif";
+  const actLines = wrapText(ctx, `Tip: ${pulse.actionRecommendation}`, textW, 2);
   if (actLines[0]) {
-    ctx.fillText(actLines[0], textX, y + alertBoxH - 18);
+    ctx.fillText(actLines[0], textX, y + alertBoxH - 24);
   }
 
   // =========================================================================
   // C. WEATHER METRICS (5 Cards)
   // =========================================================================
-  y += alertBoxH + 22;
+  y += alertBoxH + 30;
   const metricGap = 14;
   const metricW = (innerW - metricGap * 4) / 5;
-  const metricH = 112;
+  const metricH = 136;
 
   const metrics = [
     {
@@ -344,49 +344,49 @@ export function renderWeatherPulsePng(
     ctx.stroke();
 
     ctx.fillStyle = "#94a3b8";
-    ctx.font = "700 14px system-ui, -apple-system, Segoe UI, sans-serif";
-    ctx.fillText(m.label, mx + 16, y + 30);
+    ctx.font = "700 15px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.fillText(m.label, mx + 16, y + 34);
 
     ctx.fillStyle = m.color;
-    ctx.font = "800 28px system-ui, -apple-system, Segoe UI, sans-serif";
-    ctx.fillText(m.value, mx + 16, y + 68);
+    ctx.font = "800 30px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.fillText(m.value, mx + 16, y + 80);
 
     ctx.fillStyle = "#94a3b8";
-    ctx.font = "500 15px system-ui, -apple-system, Segoe UI, sans-serif";
-    ctx.fillText(m.sub, mx + 16, y + 95);
+    ctx.font = "500 16px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.fillText(m.sub, mx + 16, y + 114);
   });
 
   // =========================================================================
   // D. UPCOMING WEATHER TIMELINE (Top 3-4 most significant events)
   // =========================================================================
-  y += metricH + 36;
+  y += metricH + 48;
 
   ctx.fillStyle = "#22d3ee";
-  ctx.font = "800 22px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "800 26px system-ui, -apple-system, Segoe UI, sans-serif";
   ctx.fillText("UPCOMING WEATHER TIMELINE", padX, y);
 
   // Horizon pill on right
   const horizonText = `NEXT ${horizonHours} HOURS`;
-  ctx.font = "700 16px system-ui, -apple-system, Segoe UI, sans-serif";
-  const hzW = ctx.measureText(horizonText).width + 28;
-  drawRoundedRect(ctx, WIDTH - padX - hzW, y - 22, hzW, 30, 15);
+  ctx.font = "700 18px system-ui, -apple-system, Segoe UI, sans-serif";
+  const hzW = ctx.measureText(horizonText).width + 32;
+  drawRoundedRect(ctx, WIDTH - padX - hzW, y - 24, hzW, 34, 17);
   ctx.fillStyle = "rgba(34, 211, 238, 0.16)";
   ctx.fill();
   ctx.fillStyle = "#67e8f9";
-  ctx.fillText(horizonText, WIDTH - padX - hzW + 14, y - 2);
+  ctx.fillText(horizonText, WIDTH - padX - hzW + 16, y - 1);
 
-  y += 28;
+  y += 34;
   ctx.fillStyle = "#94a3b8";
-  ctx.font = "500 20px system-ui, -apple-system, Segoe UI, sans-serif";
+  ctx.font = "500 23px system-ui, -apple-system, Segoe UI, sans-serif";
   ctx.fillText("What could happen over the next few hours?", padX, y);
 
-  y += 24;
+  y += 32;
   const timelineEvents = selectTopTimelineEvents(pulse.events, 4);
-  const footerReserved = 104;
+  const footerReserved = 120;
   const availH = HEIGHT - footerReserved - y;
 
   if (timelineEvents.length === 0) {
-    drawRoundedRect(ctx, padX, y + 20, innerW, 180, 24);
+    drawRoundedRect(ctx, padX, y + 30, innerW, 220, 28);
     ctx.fillStyle = "rgba(15, 23, 42, 0.65)";
     ctx.fill();
     ctx.strokeStyle = "rgba(56, 189, 248, 0.22)";
@@ -394,24 +394,24 @@ export function renderWeatherPulsePng(
     ctx.stroke();
 
     ctx.fillStyle = "#e2e8f0";
-    ctx.font = "700 26px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.font = "700 28px system-ui, -apple-system, Segoe UI, sans-serif";
     ctx.fillText(
       "No significant weather changes expected in the next few hours.",
       padX + 40,
-      y + 102
+      y + 124
     );
 
     ctx.fillStyle = "#94a3b8";
-    ctx.font = "500 20px system-ui, -apple-system, Segoe UI, sans-serif";
+    ctx.font = "500 22px system-ui, -apple-system, Segoe UI, sans-serif";
     ctx.fillText(
       "Live ECMWF short-range guidance indicates steady conditions for this location.",
       padX + 40,
-      y + 142
+      y + 170
     );
   } else {
     const count = timelineEvents.length;
-    const rowGap = 18;
-    const rowH = Math.min(138, Math.floor((availH - rowGap * (count - 1)) / count));
+    const rowGap = 24;
+    const rowH = Math.min(200, Math.floor((availH - rowGap * (count - 1)) / count));
     const lineX = padX + 26;
 
     // Vertical connecting line
@@ -419,10 +419,10 @@ export function renderWeatherPulsePng(
       const startY = y + rowH / 2;
       const endY = y + (count - 1) * (rowH + rowGap) + rowH / 2;
       const lineGrad = ctx.createLinearGradient(lineX, startY, lineX, endY);
-      lineGrad.addColorStop(0, "rgba(34, 211, 238, 0.8)");
+      lineGrad.addColorStop(0, "rgba(34, 211, 238, 0.85)");
       lineGrad.addColorStop(1, "rgba(56, 189, 248, 0.25)");
       ctx.strokeStyle = lineGrad;
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 4.5;
       ctx.beginPath();
       ctx.moveTo(lineX, startY);
       ctx.lineTo(lineX, endY);
@@ -437,69 +437,76 @@ export function renderWeatherPulsePng(
       // Marker circle on timeline rail
       const markerY = ey + rowH / 2;
       ctx.beginPath();
-      ctx.arc(lineX, markerY, 13, 0, Math.PI * 2);
+      ctx.arc(lineX, markerY, 15, 0, Math.PI * 2);
       ctx.fillStyle = "#040914";
       ctx.fill();
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 4.5;
       ctx.strokeStyle = vis.accent;
       ctx.stroke();
 
       ctx.beginPath();
-      ctx.arc(lineX, markerY, 5, 0, Math.PI * 2);
+      ctx.arc(lineX, markerY, 6, 0, Math.PI * 2);
       ctx.fillStyle = vis.accent;
       ctx.fill();
 
       // Event card
-      const cardX = padX + 58;
-      const cardW = innerW - 58;
-      drawRoundedRect(ctx, cardX, ey, cardW, rowH, 20);
+      const cardX = padX + 60;
+      const cardW = innerW - 60;
+      drawRoundedRect(ctx, cardX, ey, cardW, rowH, 24);
       ctx.fillStyle = vis.bg;
       ctx.fill();
       ctx.strokeStyle = `${vis.accent}55`;
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.6;
       ctx.stroke();
 
-      // Top row inside event card: Time + Emoji + Headline + Badges
+      // Top row inside event card: Time + Emoji + Headline
       ctx.fillStyle = vis.accent;
-      ctx.font = "800 22px system-ui, -apple-system, Segoe UI, sans-serif";
-      ctx.fillText(ev.localTimeLabel, cardX + 22, ey + 40);
+      ctx.font = "800 25px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillText(ev.localTimeLabel, cardX + 26, ey + 48);
 
-      ctx.font = "24px system-ui, Apple Color Emoji, Segoe UI Emoji, sans-serif";
-      ctx.fillText(vis.emoji, cardX + 150, ey + 42);
+      ctx.font = "28px system-ui, Apple Color Emoji, Segoe UI Emoji, sans-serif";
+      ctx.fillText(vis.emoji, cardX + 168, ey + 50);
 
       ctx.fillStyle = "#ffffff";
-      ctx.font = "800 22px system-ui, -apple-system, Segoe UI, sans-serif";
-      ctx.fillText(ev.headline, cardX + 190, ey + 40);
+      ctx.font = "800 25px system-ui, -apple-system, Segoe UI, sans-serif";
+      ctx.fillText(ev.headline, cardX + 212, ey + 48);
 
       // Source & Confidence pills on top-right of event card
       const confLabel = `${ev.confidence} CONF`;
-      ctx.font = "700 14px system-ui, -apple-system, Segoe UI, sans-serif";
-      const confW = ctx.measureText(confLabel).width + 20;
-      const srcW = ctx.measureText(src.label).width + 20;
+      ctx.font = "700 15px system-ui, -apple-system, Segoe UI, sans-serif";
+      const confW = ctx.measureText(confLabel).width + 22;
+      const srcW = ctx.measureText(src.label).width + 22;
 
       // Confidence pill
-      const confX = cardX + cardW - confW - 18;
-      drawRoundedRect(ctx, confX, ey + 17, confW, 28, 14);
-      ctx.fillStyle = "rgba(15, 23, 42, 0.78)";
+      const confX = cardX + cardW - confW - 22;
+      drawRoundedRect(ctx, confX, ey + 22, confW, 32, 16);
+      ctx.fillStyle = "rgba(15, 23, 42, 0.82)";
       ctx.fill();
       ctx.fillStyle = getConfidenceColor(ev.confidence);
-      ctx.fillText(confLabel, confX + 10, ey + 36);
+      ctx.fillText(confLabel, confX + 11, ey + 43);
 
       // Source pill
       const srcX = confX - srcW - 10;
-      drawRoundedRect(ctx, srcX, ey + 17, srcW, 28, 14);
+      drawRoundedRect(ctx, srcX, ey + 22, srcW, 32, 16);
       ctx.fillStyle = src.bg;
       ctx.fill();
       ctx.fillStyle = src.color;
-      ctx.fillText(src.label, srcX + 10, ey + 36);
+      ctx.fillText(src.label, srcX + 11, ey + 43);
 
       // Explanation text
       ctx.fillStyle = "#cbd5e1";
-      ctx.font = "500 19px system-ui, -apple-system, Segoe UI, sans-serif";
-      const lines = wrapText(ctx, ev.explanation, cardW - 44, 2);
+      ctx.font = "500 22px system-ui, -apple-system, Segoe UI, sans-serif";
+      const lines = wrapText(ctx, ev.explanation, cardW - 52, 2);
       lines.forEach((line, lIdx) => {
-        ctx.fillText(line, cardX + 22, ey + 78 + lIdx * 25);
+        ctx.fillText(line, cardX + 26, ey + 96 + lIdx * 30);
       });
+
+      // Source provider subtle footer inside card when tall enough
+      if (rowH >= 165) {
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = "500 17px system-ui, -apple-system, Segoe UI, sans-serif";
+        ctx.fillText(`Source: ${ev.sourceProvider}`, cardX + 26, ey + rowH - 22);
+      }
     });
   }
 

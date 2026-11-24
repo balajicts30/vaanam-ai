@@ -1,6 +1,8 @@
 import { getStoryTheme } from "./themes";
 import { StoryThemeId } from "@/types/weather";
 
+export const STORY_DURATION_SEC = 6;
+
 export interface StoryRenderPayload {
   city: string;
   region: string;
@@ -14,14 +16,17 @@ export interface StoryRenderPayload {
   tempMaxC: number | null;
   currentTempC: number | null;
   rainProbability: number | null;
+  heavyRainProbability?: number | null;
   precipitationMm: number | null;
   windKmh: number | null;
   humidityPct: number | null;
   confidence: "HIGH" | "MODERATE" | "LOW";
   tempUnit: "C" | "F";
+  rainUnit?: "mm" | "in";
+  windUnit?: "kmh" | "ms";
   themeId: StoryThemeId;
   designVariant: number; // 0, 1, 2
-  timelinePreview: Array<{ label: string; temp: string; rainPct: number }>;
+  timelinePreview: Array<{ label: string; temp: string; rainPct: number; precipMm?: number }>;
 }
 
 // Generic 2D canvas context interface compatible with both browser HTMLCanvasElement and @napi-rs/canvas
@@ -427,13 +432,46 @@ export function renderFacebookPost(
   ctx.fillText("VAANAM AI", w - 60, h - 54);
 }
 
+function fmtRainAmt(mm: number | null | undefined, unit: "mm" | "in" = "mm"): string {
+  if (mm === null || mm === undefined || Number.isNaN(mm)) return "0.0 mm";
+  if (unit === "in") return `${(mm / 25.4).toFixed(2)} in`;
+  return `${mm.toFixed(1)} mm`;
+}
+
+function fmtWindAmt(kmh: number | null | undefined, unit: "kmh" | "ms" = "kmh"): string {
+  if (kmh === null || kmh === undefined || Number.isNaN(kmh)) return "—";
+  if (unit === "ms") return `${(kmh / 3.6).toFixed(1)} m/s`;
+  return `${Math.round(kmh)} km/h`;
+}
+
+function getRainRiskBadge(
+  rainProb: number | null,
+  precipMm: number | null,
+  category: string
+): { label: string; color: string; bg: string } {
+  const prob = rainProb ?? 0;
+  const mm = precipMm ?? 0;
+  if (category === "thunderstorm") {
+    return { label: "THUNDERSTORM RISK", color: "#e9d5ff", bg: "rgba(139, 92, 246, 0.32)" };
+  }
+  if (mm >= 25 || category === "heavy_rain") {
+    return { label: "HEAVY RAIN ALERT", color: "#bfdbfe", bg: "rgba(59, 130, 246, 0.34)" };
+  }
+  if (prob >= 60 || mm >= 5) {
+    return { label: "LIKELY RAINFALL", color: "#a5f3fc", bg: "rgba(6, 182, 212, 0.30)" };
+  }
+  if (prob >= 30 || mm >= 1) {
+    return { label: "SCATTERED SHOWERS", color: "#bae6fd", bg: "rgba(14, 165, 233, 0.26)" };
+  }
+  return { label: "LOW RAIN CHANCE", color: "#a7f3d0", bg: "rgba(16, 185, 129, 0.24)" };
+}
+
 /**
- * Renders one frame at time `tSec` (0.0 to 10.0) of the 10-second 9:16 Instagram Story.
- * Exact 10-second narrative structure:
- *   0–2s: Location reveal & dramatic weather introduction
- *   2–5s: Weather condition animation & animated temperature reveal
- *   5–8s: Rain probability, wind & forecast timeline
- *   8–10s: Closing animation, VAANAM AI branding & weather awareness prompt
+ * Renders one frame at time `tSec` (0.0 to STORY_DURATION_SEC) of a single-page animated
+ * 9:16 (1080×1920) Rain Forecast Video.
+ *
+ * All rain-related information stays visible on one single page with zero scene changes,
+ * accompanied by continuous rain/cloud/wind/pulse/gauge animations that loop seamlessly.
  */
 export function renderStoryFrame(
   ctx: Canvas2DLike,
@@ -443,10 +481,19 @@ export function renderStoryFrame(
   data: StoryRenderPayload
 ) {
   const theme = getStoryTheme(data.themeId);
-  const clampedT = Math.max(0, Math.min(10, tSec));
+  const dur = STORY_DURATION_SEC;
+  const loopT = ((tSec % dur) + dur) % dur;
+  const phase = (loopT / dur) * Math.PI * 2; // Seamless 0..2π loop phase
 
-  // Background gradient with subtle drift
-  const drift = Math.sin(clampedT * 0.5) * 120;
+  const rainProb = Math.max(0, Math.min(100, Math.round(data.rainProbability ?? 0)));
+  const precipMm = data.precipitationMm ?? 0;
+  const heavyProb = data.heavyRainProbability ?? null;
+  const rainUnit = data.rainUnit ?? "mm";
+  const windUnit = data.windUnit ?? "kmh";
+  const risk = getRainRiskBadge(data.rainProbability, data.precipitationMm, data.weatherCategory);
+
+  // 1. Seamless animated atmospheric background gradient
+  const drift = Math.sin(phase) * 90;
   const grad = ctx.createLinearGradient(0, drift, w, h + drift);
   grad.addColorStop(0, theme.bgStops[0]);
   grad.addColorStop(0.5, theme.bgStops[1]);
@@ -454,247 +501,356 @@ export function renderStoryFrame(
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  // Live animated weather effects (clouds, rain, lightning, wind, radar)
-  drawWeatherEffects(ctx, w, h, clampedT, data.weatherCategory, theme);
+  // 2. Continuous animated weather effects (drifting clouds, rain streaks, lightning, wind)
+  // Always ensure subtle rain streaks if rainProb >= 25% so rain stories feel alive
+  const effectCategory =
+    data.weatherCategory === "thunderstorm"
+      ? "thunderstorm"
+      : data.weatherCategory === "heavy_rain" || precipMm >= 20
+      ? "heavy_rain"
+      : rainProb >= 25 || precipMm >= 0.5
+      ? "rain"
+      : data.weatherCategory;
+  drawWeatherEffects(ctx, w, h, loopT, effectCategory, theme);
 
-  // Top Story Progress Bar (10s live progress)
-  ctx.fillStyle = "rgba(255,255,255,0.2)";
-  drawRoundedRect(ctx, 48, 56, w - 96, 10, 5);
-  ctx.fill();
-  ctx.fillStyle = theme.accent;
-  drawRoundedRect(ctx, 48, 56, (w - 96) * (clampedT / 10), 10, 5);
-  ctx.fill();
+  const padX = 52;
+  const cardW = w - padX * 2;
 
-  // Persistent Top Brand Pill
+  // =========================================================================
+  // TOP HEADER BAR (VAANAM AI • RAIN OUTLOOK + DATE)
+  // =========================================================================
   ctx.fillStyle = theme.cardBg;
   ctx.strokeStyle = theme.cardBorder;
   ctx.lineWidth = 2;
-  drawRoundedRect(ctx, 48, 96, w - 96, 86, 28);
+  drawRoundedRect(ctx, padX, 58, cardW, 84, 26);
   ctx.fill();
   ctx.stroke();
+
+  // Pulsing live dot
+  const pulseR = 9 + Math.sin(phase * 2) * 3;
+  ctx.beginPath();
+  ctx.arc(padX + 34, 100, pulseR, 0, Math.PI * 2);
+  ctx.fillStyle = `${theme.accent}44`;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(padX + 34, 100, 6, 0, Math.PI * 2);
+  ctx.fillStyle = theme.accent;
+  ctx.fill();
 
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   ctx.fillStyle = theme.accent;
-  ctx.font = "800 28px sans-serif";
-  ctx.fillText("VAANAM AI", 84, 139);
+  ctx.font = "800 26px sans-serif";
+  ctx.fillText("VAANAM AI  •  RAIN FORECAST", padX + 56, 100);
 
   ctx.textAlign = "right";
   ctx.fillStyle = theme.textSecondary;
+  ctx.font = "700 24px sans-serif";
+  ctx.fillText(data.dateLabel.toUpperCase(), w - padX - 28, 100);
+
+  // =========================================================================
+  // LOCATION + ANIMATED RAIN/WEATHER ICON HERO HEADER
+  // =========================================================================
+  const heroY = 178;
+  ctx.textAlign = "left";
+  ctx.fillStyle = theme.textPrimary;
+  ctx.font = "900 76px sans-serif";
+  ctx.fillText(data.city.toUpperCase(), padX + 6, heroY + 46, cardW - 220);
+
+  ctx.fillStyle = theme.textSecondary;
+  ctx.font = "600 30px sans-serif";
+  ctx.fillText(data.region, padX + 8, heroY + 104, cardW - 220);
+
+  // Risk Pill + Temp Pill inline
+  ctx.font = "800 22px sans-serif";
+  const riskW = ctx.measureText(risk.label).width + 38;
+  drawRoundedRect(ctx, padX + 6, heroY + 132, riskW, 46, 23);
+  ctx.fillStyle = risk.bg;
+  ctx.fill();
+  ctx.fillStyle = risk.color;
+  ctx.fillText(risk.label, padX + 25, heroY + 155);
+
+  const tempRangeStr = `${fmtTemp(data.tempMinC, data.tempUnit)} – ${fmtTemp(data.tempMaxC, data.tempUnit)}`;
+  const tempPillX = padX + 6 + riskW + 16;
+  ctx.font = "700 22px sans-serif";
+  const tempPillW = ctx.measureText(tempRangeStr).width + 36;
+  drawRoundedRect(ctx, tempPillX, heroY + 132, tempPillW, 46, 23);
+  ctx.fillStyle = "rgba(15, 23, 42, 0.55)";
+  ctx.fill();
+  ctx.strokeStyle = theme.cardBorder;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = theme.textPrimary;
+  ctx.fillText(tempRangeStr, tempPillX + 18, heroY + 155);
+
+  // Animated Weather Icon on right
+  drawWeatherIcon(ctx, w - padX - 96, heroY + 86, 136, effectCategory, theme.accent, loopT);
+
+  // =========================================================================
+  // MAIN RAIN METRICS CARD (Rain Chance + Animated Bar + Expected Rainfall + Heavy Rain Risk)
+  // =========================================================================
+  const mainY = 398;
+  const mainH = 382;
+  ctx.fillStyle = theme.cardBg;
+  ctx.strokeStyle = theme.cardBorder;
+  ctx.lineWidth = 2;
+  drawRoundedRect(ctx, padX, mainY, cardW, mainH, 34);
+  ctx.fill();
+  ctx.stroke();
+
+  // Subtle animated shimmer sweep across top border
+  const shimmerX = padX + ((loopT / dur) * (cardW + 260)) - 130;
+  ctx.save();
+  const shimGrad = ctx.createLinearGradient(shimmerX - 90, mainY, shimmerX + 90, mainY);
+  shimGrad.addColorStop(0, "rgba(255,255,255,0)");
+  shimGrad.addColorStop(0.5, `${theme.accent}aa`);
+  shimGrad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.strokeStyle = shimGrad;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(Math.max(padX + 34, shimmerX - 90), mainY + 1);
+  ctx.lineTo(Math.min(padX + cardW - 34, shimmerX + 90), mainY + 1);
+  ctx.stroke();
+  ctx.restore();
+
+  // Left side: Big Rain Probability
+  ctx.textAlign = "left";
+  ctx.fillStyle = theme.accent;
+  ctx.font = "800 24px sans-serif";
+  ctx.fillText("RAIN PROBABILITY", padX + 38, mainY + 50);
+
+  ctx.fillStyle = theme.textPrimary;
+  ctx.font = "900 132px sans-serif";
+  ctx.fillText(`${rainProb}%`, padX + 36, mainY + 148);
+
+  ctx.fillStyle = theme.textSecondary;
   ctx.font = "600 24px sans-serif";
-  ctx.fillText(`${data.dateLabel.toUpperCase()} • LIVE MODEL`, w - 84, 139);
+  ctx.fillText(data.conditionLabel, padX + 38, mainY + 230);
 
-  // Helper for smooth fade-in/out per scene
-  const sceneAlpha = (start: number, end: number) => {
-    if (clampedT < start || clampedT > end) return 0;
-    const fadeIn = Math.min(1, (clampedT - start) / 0.45);
-    const fadeOut = end >= 10 ? 1 : Math.min(1, (end - clampedT) / 0.4);
-    return Math.max(0, Math.min(fadeIn, fadeOut));
-  };
+  // Right side: Expected Rainfall + Heavy Rain Risk stacked
+  const rightColX = padX + cardW * 0.52;
+  const rightColW = cardW * 0.48 - 36;
 
-  // SCENE 1 (0–2.3s): Location Reveal & Dramatic Weather Introduction
-  const a1 = sceneAlpha(0, 2.35);
-  if (a1 > 0.01) {
-    ctx.save();
-    ctx.globalAlpha = a1;
-    const slideY = (1 - Math.min(1, clampedT / 0.6)) * 60;
+  drawRoundedRect(ctx, rightColX, mainY + 34, rightColW, 102, 22);
+  ctx.fillStyle = "rgba(4, 10, 24, 0.55)";
+  ctx.fill();
+  ctx.strokeStyle = `${theme.accent}44`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 
-    drawWeatherIcon(ctx, w / 2, h * 0.34 + slideY, 190, data.weatherCategory, theme.accent, clampedT);
+  ctx.fillStyle = theme.textSecondary;
+  ctx.font = "700 20px sans-serif";
+  ctx.fillText("EXPECTED RAINFALL", rightColX + 22, mainY + 64);
 
-    ctx.textAlign = "center";
-    ctx.fillStyle = theme.accent;
-    ctx.font = "700 32px sans-serif";
-    ctx.fillText("WEATHER INTELLIGENCE BRIEFING", w / 2, h * 0.49 + slideY);
+  ctx.fillStyle = theme.accent;
+  ctx.font = "900 46px sans-serif";
+  ctx.fillText(fmtRainAmt(precipMm, rainUnit), rightColX + 22, mainY + 108);
 
-    ctx.fillStyle = theme.textPrimary;
-    ctx.font = "900 104px sans-serif";
-    ctx.fillText(data.city.toUpperCase(), w / 2, h * 0.56 + slideY, w - 110);
+  drawRoundedRect(ctx, rightColX, mainY + 150, rightColW, 102, 22);
+  ctx.fillStyle = "rgba(4, 10, 24, 0.55)";
+  ctx.fill();
+  ctx.strokeStyle = theme.cardBorder;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
 
-    ctx.fillStyle = theme.textSecondary;
-    ctx.font = "600 38px sans-serif";
-    ctx.fillText(data.region, w / 2, h * 0.62 + slideY, w - 120);
+  ctx.fillStyle = theme.textSecondary;
+  ctx.font = "700 20px sans-serif";
+  ctx.fillText("HEAVY RAIN RISK", rightColX + 22, mainY + 180);
 
+  ctx.fillStyle = theme.textPrimary;
+  ctx.font = "900 44px sans-serif";
+  ctx.fillText(
+    heavyProb !== null ? `${Math.round(heavyProb)}%` : precipMm >= 25 ? "ELEVATED" : "LOW",
+    rightColX + 22,
+    mainY + 224
+  );
+
+  // Animated Rain Intensity Progress Bar across bottom of main card
+  const barX = padX + 38;
+  const barY = mainY + 292;
+  const barW = cardW - 76;
+  const barH = 26;
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
+  drawRoundedRect(ctx, barX, barY, barW, barH, 13);
+  ctx.fill();
+
+  const fillFrac = Math.max(0.05, rainProb / 100);
+  const pulseFill = Math.min(1, fillFrac + Math.sin(phase * 2) * 0.012);
+  const barGrad = ctx.createLinearGradient(barX, barY, barX + barW * pulseFill, barY);
+  barGrad.addColorStop(0, theme.accentSecondary);
+  barGrad.addColorStop(1, theme.accent);
+  ctx.fillStyle = barGrad;
+  drawRoundedRect(ctx, barX, barY, Math.max(26, barW * pulseFill), barH, 13);
+  ctx.fill();
+
+  ctx.fillStyle = theme.textSecondary;
+  ctx.font = "600 20px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText("0% Dry", barX, barY + 50);
+  ctx.textAlign = "center";
+  ctx.fillText("50% Moderate", barX + barW / 2, barY + 50);
+  ctx.textAlign = "right";
+  ctx.fillText("100% Heavy", barX + barW, barY + 50);
+
+  // =========================================================================
+  // SUPPORTING RAIN TELEMETRY STRIP (Wind, Humidity, Confidence)
+  // =========================================================================
+  const subY = 812;
+  const subH = 164;
+  const subGap = 20;
+  const subW = (cardW - subGap * 2) / 3;
+
+  const subCards = [
+    {
+      label: "WIND SPEED",
+      value: fmtWindAmt(data.windKmh, windUnit),
+      sub: "Peak gusts / wind",
+    },
+    {
+      label: "HUMIDITY",
+      value: data.humidityPct !== null ? `${Math.round(data.humidityPct)}%` : "—",
+      sub: "Moisture level",
+    },
+    {
+      label: "CONFIDENCE",
+      value: data.confidence,
+      sub: "ECMWF ENS 51",
+    },
+  ];
+
+  subCards.forEach((sc, idx) => {
+    const sx = padX + idx * (subW + subGap);
     ctx.fillStyle = theme.cardBg;
     ctx.strokeStyle = theme.cardBorder;
-    drawRoundedRect(ctx, 84, h * 0.68 + slideY, w - 168, 130, 32);
+    ctx.lineWidth = 2;
+    drawRoundedRect(ctx, sx, subY, subW, subH, 26);
     ctx.fill();
     ctx.stroke();
 
-    ctx.fillStyle = theme.textPrimary;
-    ctx.font = "700 38px sans-serif";
-    ctx.fillText(data.conditionLabel.toUpperCase(), w / 2, h * 0.715 + slideY, w - 220);
-    ctx.restore();
-  }
-
-  // SCENE 2 (2.0–5.3s): Weather Condition Animation & Animated Temperature Reveal
-  const a2 = sceneAlpha(2.0, 5.35);
-  if (a2 > 0.01) {
-    ctx.save();
-    ctx.globalAlpha = a2;
-    const progress = Math.min(1, Math.max(0, (clampedT - 2.0) / 1.2));
-
-    ctx.textAlign = "center";
+    ctx.textAlign = "left";
     ctx.fillStyle = theme.textSecondary;
-    ctx.font = "700 32px sans-serif";
-    ctx.fillText(`${data.city.toUpperCase()} • TEMPERATURE OUTLOOK`, w / 2, h * 0.23);
+    ctx.font = "700 20px sans-serif";
+    ctx.fillText(sc.label, sx + 26, subY + 40);
 
-    drawWeatherIcon(ctx, w / 2, h * 0.35, 180, data.weatherCategory, theme.accent, clampedT);
+    ctx.fillStyle = idx === 2 ? theme.accent : theme.textPrimary;
+    ctx.font = "900 44px sans-serif";
+    ctx.fillText(sc.value, sx + 26, subY + 94, subW - 44);
 
-    // Animated counting temperature
-    const targetMax = data.tempMaxC ?? data.currentTempC ?? 30;
-    const animTemp = Math.round(targetMax * (0.4 + 0.6 * progress));
-    const displayAnim =
-      data.tempUnit === "F" ? `${Math.round((animTemp * 9) / 5 + 32)}°F` : `${animTemp}°C`;
+    ctx.fillStyle = theme.textSecondary;
+    ctx.font = "600 20px sans-serif";
+    ctx.fillText(sc.sub, sx + 26, subY + 136, subW - 44);
+  });
 
-    ctx.fillStyle = theme.textPrimary;
-    ctx.font = "900 176px sans-serif";
-    ctx.fillText(displayAnim, w / 2, h * 0.54);
+  // =========================================================================
+  // HOURLY RAIN TIMELINE CARD (Animated Rain Bars for Key Hours)
+  // =========================================================================
+  const tlY = 1008;
+  const tlH = 420;
+  ctx.fillStyle = theme.cardBg;
+  ctx.strokeStyle = theme.cardBorder;
+  ctx.lineWidth = 2;
+  drawRoundedRect(ctx, padX, tlY, cardW, tlH, 32);
+  ctx.fill();
+  ctx.stroke();
 
-    // Min / Max Pill
-    ctx.fillStyle = theme.cardBg;
-    ctx.strokeStyle = theme.cardBorder;
-    drawRoundedRect(ctx, 110, h * 0.63, w - 220, 136, 36);
-    ctx.fill();
-    ctx.stroke();
+  ctx.textAlign = "left";
+  ctx.fillStyle = theme.accent;
+  ctx.font = "800 24px sans-serif";
+  ctx.fillText("HOURLY RAIN TIMELINE", padX + 36, tlY + 46);
 
-    ctx.fillStyle = theme.accent;
-    ctx.font = "700 34px sans-serif";
-    ctx.fillText(
-      `LOW ${fmtTemp(data.tempMinC, data.tempUnit)}   •   HIGH ${fmtTemp(data.tempMaxC, data.tempUnit)}`,
-      w / 2,
-      h * 0.665
-    );
-    ctx.fillStyle = theme.textPrimary;
-    ctx.font = "600 30px sans-serif";
-    ctx.fillText(data.conditionLabel, w / 2, h * 0.705);
-    ctx.restore();
-  }
+  ctx.textAlign = "right";
+  ctx.fillStyle = theme.textSecondary;
+  ctx.font = "600 21px sans-serif";
+  ctx.fillText("Rain Chance • Rainfall • Temp", padX + cardW - 36, tlY + 46);
 
-  // SCENE 3 (5.0–8.3s): Rain Probability, Wind & Live-Feeling Forecast Timeline
-  const a3 = sceneAlpha(5.0, 8.35);
-  if (a3 > 0.01) {
-    ctx.save();
-    ctx.globalAlpha = a3;
+  const items = data.timelinePreview.slice(0, 5);
+  if (items.length > 0) {
+    const innerPad = 36;
+    const colW = (cardW - innerPad * 2) / items.length;
+    const chartBottom = tlY + 292;
+    const maxBarH = 148;
 
-    ctx.textAlign = "center";
-    ctx.fillStyle = theme.accent;
-    ctx.font = "800 34px sans-serif";
-    ctx.fillText("KEY FORECAST PARAMETERS", w / 2, h * 0.22);
+    items.forEach((it, idx) => {
+      const cx = padX + innerPad + colW * idx + colW / 2;
+      const pct = Math.max(0, Math.min(100, it.rainPct));
 
-    const rows = [
-      {
-        label: "RAIN PROBABILITY (ECMWF ENS)",
-        value: data.rainProbability !== null ? `${data.rainProbability}%` : "—",
-        sub: data.precipitationMm !== null ? `${data.precipitationMm.toFixed(1)} mm expected` : "",
-      },
-      {
-        label: "PEAK WIND SPEED",
-        value: data.windKmh !== null ? `${Math.round(data.windKmh)} km/h` : "—",
-        sub: data.humidityPct !== null ? `Humidity ${data.humidityPct}%` : "",
-      },
-      {
-        label: "ENSEMBLE CONFIDENCE",
-        value: data.confidence,
-        sub: "Based on 51-member ECMWF ENS spread",
-      },
-    ];
+      // Gentle wave animation on each hourly rain bar
+      const wave = 1 + Math.sin(phase * 2 - idx * 0.7) * 0.04;
+      const barHeight = Math.max(14, (pct / 100) * maxBarH * wave);
+      const bw = Math.min(64, colW * 0.48);
 
-    rows.forEach((row, idx) => {
-      const y = h * 0.28 + idx * 215;
-      ctx.fillStyle = theme.cardBg;
-      ctx.strokeStyle = theme.cardBorder;
-      drawRoundedRect(ctx, 64, y, w - 128, 182, 30);
+      // Bar background track
+      ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+      drawRoundedRect(ctx, cx - bw / 2, chartBottom - maxBarH, bw, maxBarH, 14);
       ctx.fill();
-      ctx.stroke();
 
-      ctx.textAlign = "left";
-      ctx.fillStyle = theme.textSecondary;
-      ctx.font = "700 24px sans-serif";
-      ctx.fillText(row.label, 104, y + 48);
+      // Animated rain fill bar
+      const bGrad = ctx.createLinearGradient(cx, chartBottom - barHeight, cx, chartBottom);
+      bGrad.addColorStop(0, theme.accent);
+      bGrad.addColorStop(1, theme.accentSecondary);
+      ctx.fillStyle = bGrad;
+      drawRoundedRect(ctx, cx - bw / 2, chartBottom - barHeight, bw, barHeight, 14);
+      ctx.fill();
 
+      // Rain % above bar
+      ctx.textAlign = "center";
       ctx.fillStyle = theme.textPrimary;
-      ctx.font = "900 62px sans-serif";
-      ctx.fillText(row.value, 104, y + 112);
+      ctx.font = "800 28px sans-serif";
+      ctx.fillText(`${pct}%`, cx, chartBottom - maxBarH - 22);
 
-      if (row.sub) {
-        ctx.textAlign = "right";
-        ctx.fillStyle = theme.accent;
-        ctx.font = "600 26px sans-serif";
-        ctx.fillText(row.sub, w - 104, y + 118);
-      }
-    });
-
-    // Mini Forecast Timeline strip
-    if (data.timelinePreview.length > 0) {
-      const stripY = h * 0.67;
-      ctx.fillStyle = theme.cardBg;
-      ctx.strokeStyle = theme.cardBorder;
-      drawRoundedRect(ctx, 64, stripY, w - 128, 220, 30);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.textAlign = "left";
+      // Time label
       ctx.fillStyle = theme.accent;
       ctx.font = "700 24px sans-serif";
-      ctx.fillText("HOURLY TIMELINE", 104, stripY + 46);
+      ctx.fillText(it.label, cx, chartBottom + 34);
 
-      const items = data.timelinePreview.slice(0, 4);
-      const colW = (w - 208) / Math.max(items.length, 1);
-      items.forEach((it, idx) => {
-        const cx = 104 + colW * idx + colW / 2;
-        ctx.textAlign = "center";
-        ctx.fillStyle = theme.textSecondary;
-        ctx.font = "600 26px sans-serif";
-        ctx.fillText(it.label, cx, stripY + 98);
-        ctx.fillStyle = theme.textPrimary;
-        ctx.font = "800 38px sans-serif";
-        ctx.fillText(it.temp, cx, stripY + 146);
-        ctx.fillStyle = theme.accent;
-        ctx.font = "600 24px sans-serif";
-        ctx.fillText(`${it.rainPct}% rain`, cx, stripY + 186);
-      });
-    }
-    ctx.restore();
+      // Rainfall amount & Temp
+      ctx.fillStyle = theme.textSecondary;
+      ctx.font = "600 21px sans-serif";
+      const mmText =
+        typeof it.precipMm === "number" ? fmtRainAmt(it.precipMm, rainUnit) : it.temp;
+      ctx.fillText(mmText, cx, chartBottom + 68);
+
+      ctx.fillStyle = theme.textPrimary;
+      ctx.font = "700 22px sans-serif";
+      ctx.fillText(it.temp, cx, chartBottom + 98);
+    });
   }
 
-  // SCENE 4 (8.0–10.0s): Closing Animation, VAANAM AI Branding & Share Prompt
-  const a4 = sceneAlpha(8.0, 10.0);
-  if (a4 > 0.01) {
-    ctx.save();
-    ctx.globalAlpha = a4;
+  // =========================================================================
+  // RAIN BRIEFING & ACTION ADVISORY CARD
+  // =========================================================================
+  const sumY = 1460;
+  const sumH = 310;
+  ctx.fillStyle = theme.cardBg;
+  ctx.strokeStyle = theme.cardBorder;
+  ctx.lineWidth = 2;
+  drawRoundedRect(ctx, padX, sumY, cardW, sumH, 32);
+  ctx.fill();
+  ctx.stroke();
 
-    ctx.textAlign = "center";
-    ctx.fillStyle = theme.accent;
-    ctx.font = "900 84px sans-serif";
-    ctx.fillText("VAANAM AI", w / 2, h * 0.38);
+  ctx.textAlign = "left";
+  ctx.fillStyle = theme.accent;
+  ctx.font = "800 24px sans-serif";
+  ctx.fillText("RAIN BRIEFING & ADVISORY", padX + 36, sumY + 46);
 
-    ctx.fillStyle = theme.textPrimary;
-    ctx.font = "700 36px sans-serif";
-    ctx.fillText("REAL DATA. CLEAR FORECASTS.", w / 2, h * 0.44);
+  ctx.fillStyle = theme.textPrimary;
+  ctx.font = "600 32px sans-serif";
+  wrapText(ctx, data.shortSummary, padX + 36, sumY + 96, cardW - 72, 44, 4);
 
-    ctx.fillStyle = theme.cardBg;
-    ctx.strokeStyle = theme.cardBorder;
-    drawRoundedRect(ctx, 84, h * 0.51, w - 168, 240, 36);
-    ctx.fill();
-    ctx.stroke();
+  ctx.fillStyle = theme.textSecondary;
+  ctx.font = "600 21px sans-serif";
+  ctx.fillText(
+    "ECMWF IFS 0.25° & ENS 51-Member Model • Follow official local advisories",
+    padX + 36,
+    sumY + sumH - 34
+  );
 
-    ctx.fillStyle = theme.textPrimary;
-    ctx.font = "600 34px sans-serif";
-    wrapText(ctx, data.shortSummary, w / 2, h * 0.565, w - 230, 46, 3);
-
-    ctx.fillStyle = theme.accent;
-    ctx.font = "700 30px sans-serif";
-    ctx.fillText("STAY WEATHER-AWARE • SHARE THIS UPDATE", w / 2, h * 0.72);
-
-    ctx.fillStyle = theme.textSecondary;
-    ctx.font = "500 22px sans-serif";
-    ctx.fillText("Model data: ECMWF IFS & ENS • Follow IMD for official warnings", w / 2, h * 0.77);
-    ctx.restore();
-  }
-
-  // Persistent Bottom Footer
+  // =========================================================================
+  // PERSISTENT BOTTOM FOOTER
+  // =========================================================================
   ctx.textAlign = "center";
-  ctx.fillStyle = "rgba(255,255,255,0.65)";
-  ctx.font = "600 22px sans-serif";
-  ctx.fillText(`${data.city} • Powered by VAANAM AI`, w / 2, h - 62);
+  ctx.fillStyle = "rgba(255,255,255,0.75)";
+  ctx.font = "700 24px sans-serif";
+  ctx.fillText(`${data.city.toUpperCase()}  •  POWERED BY VAANAM AI`, w / 2, h - 68);
 }

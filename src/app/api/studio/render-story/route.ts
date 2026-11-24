@@ -8,6 +8,7 @@ import ffmpegPath from "ffmpeg-static";
 import {
   Canvas2DLike,
   renderStoryFrame,
+  STORY_DURATION_SEC,
   StoryRenderPayload,
 } from "@/lib/studio/story-renderer";
 
@@ -15,8 +16,8 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Renders a real 10-second animated 1080×1920 H.264 MP4 Instagram Story video
- * by piping 200 rendered RGBA frames (20 fps × 10s) directly into FFmpeg (libx264, yuv420p).
+ * Renders a single-page animated 1080×1920 H.264 MP4 Rain Story loop
+ * by piping rendered RGBA frames (20 fps × STORY_DURATION_SEC) directly into FFmpeg (libx264, yuv420p).
  */
 export async function POST(req: NextRequest) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "vaanam-story-"));
@@ -38,8 +39,8 @@ export async function POST(req: NextRequest) {
     const width = 1080;
     const height = 1920;
     const fps = 20;
-    const durationSec = 10;
-    const totalFrames = fps * durationSec; // 200 frames = exact 10.0 seconds
+    const durationSec = STORY_DURATION_SEC;
+    const totalFrames = fps * durationSec;
 
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext("2d") as unknown as Canvas2DLike;
@@ -104,7 +105,7 @@ export async function POST(req: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "video/mp4",
-        "Content-Disposition": `attachment; filename="vaanam-${safeCity}-story-10s.mp4"`,
+        "Content-Disposition": `attachment; filename="vaanam-${safeCity}-rain-story.mp4"`,
         "Content-Length": String(mp4Buffer.length),
       },
     });
@@ -114,7 +115,7 @@ export async function POST(req: NextRequest) {
         error:
           err instanceof Error
             ? err.message
-            : "Failed to render 10-second animated MP4 Story.",
+            : "Failed to render animated single-page MP4 Rain Story.",
       },
       { status: 500 }
     );

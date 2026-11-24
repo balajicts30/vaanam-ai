@@ -6,21 +6,19 @@ import {
   Copy,
   Download,
   Film,
-  Image as ImageIcon,
   Languages,
   Loader2,
   Palette,
   Pause,
   Play,
-  RefreshCw,
   Share2,
   Sparkles,
 } from "lucide-react";
 import { generateFacebookCaption } from "@/lib/studio/captions";
 import {
   Canvas2DLike,
-  renderFacebookPost,
   renderStoryFrame,
+  STORY_DURATION_SEC,
   StoryRenderPayload,
 } from "@/lib/studio/story-renderer";
 import { STORY_THEMES } from "@/lib/studio/themes";
@@ -40,24 +38,21 @@ interface Props {
 }
 
 export function SocialStudioView({ payload, settings }: Props) {
-  const [studioTab, setStudioTab] = useState<"facebook" | "instagram">("facebook");
   const [dayIdx, setDayIdx] = useState(1); // Default Tomorrow (0=Today, 1=Tomorrow)
   const [themeId, setThemeId] = useState<StoryThemeId>(settings.preferredTheme);
   const [language, setLanguage] = useState<ContentLanguage>(settings.contentLanguage);
-  const [designVariant, setDesignVariant] = useState(0);
 
-  // Caption state
-  const [caption, setCaption] = useState("");
+  // Caption state (editable override keyed to generated caption)
+  const [captionEdits, setCaptionEdits] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
 
-  // Instagram 10-second preview & MP4 export state
+  // Single-page animated 9:16 Rain Story state
   const [playing, setPlaying] = useState(true);
   const [storyTime, setStoryTime] = useState(0);
   const [renderingMp4, setRenderingMp4] = useState(false);
   const [mp4Error, setMp4Error] = useState<string | null>(null);
 
-  const fbCanvasRef = useRef<HTMLCanvasElement>(null);
-  const igCanvasRef = useRef<HTMLCanvasElement>(null);
+  const storyCanvasRef = useRef<HTMLCanvasElement>(null);
 
   const selectedDay = payload.daily30[dayIdx] || payload.daily30[0];
   const info = getWeatherCodeInfo(selectedDay?.weatherCode ?? payload.current.weatherCode);
@@ -75,20 +70,22 @@ export function SocialStudioView({ payload, settings }: Props) {
     [payload, dayIdx, language, settings.tempUnit, settings.windUnit, settings.rainUnit]
   );
 
-  useEffect(() => {
-    setCaption(generatedCopy.caption);
-  }, [generatedCopy.caption]);
+  const captionKey = `${payload.location.id}:${dayIdx}:${language}`;
+  const caption = captionEdits[captionKey] ?? generatedCopy.caption;
 
   const renderPayload: StoryRenderPayload = useMemo(() => {
-    const { weekday, dayMonth } = formatDateShort(selectedDay?.date || payload.retrievedAt.slice(0, 10));
+    const { weekday, dayMonth } = formatDateShort(
+      selectedDay?.date || payload.retrievedAt.slice(0, 10)
+    );
     const dayHours = payload.hourly.slice(dayIdx * 24, dayIdx * 24 + 24);
-    const sampleHours = [6, 12, 18, 22]
+    const sampleHours = [6, 10, 14, 18, 22]
       .map((h) => dayHours[h])
       .filter(Boolean)
       .map((h) => ({
         label: formatHourLabel(h.time, settings.clockFormat),
         temp: formatTemp(h.temperature, settings.tempUnit),
         rainPct: h.rainProbability ?? 0,
+        precipMm: h.precipitation ?? 0,
       }));
 
     return {
@@ -104,31 +101,34 @@ export function SocialStudioView({ payload, settings }: Props) {
       tempMaxC: selectedDay?.tempMax ?? payload.current.temperature,
       currentTempC: payload.current.temperature,
       rainProbability: selectedDay?.rainProbability ?? payload.current.rainProbability,
+      heavyRainProbability: selectedDay?.heavyRainProbability ?? null,
       precipitationMm: selectedDay?.precipitationSum ?? payload.current.precipitation,
       windKmh: selectedDay?.windSpeedMax ?? payload.current.windSpeed,
       humidityPct: selectedDay?.humidityMean ?? payload.current.humidity,
       confidence: selectedDay?.confidence ?? "MODERATE",
       tempUnit: settings.tempUnit,
+      rainUnit: settings.rainUnit,
+      windUnit: settings.windUnit,
       themeId,
-      designVariant,
+      designVariant: 0,
       timelinePreview: sampleHours,
     };
-  }, [payload, selectedDay, dayIdx, info, generatedCopy, settings.clockFormat, settings.tempUnit, themeId, designVariant]);
+  }, [
+    payload,
+    selectedDay,
+    dayIdx,
+    info,
+    generatedCopy,
+    settings.clockFormat,
+    settings.tempUnit,
+    settings.rainUnit,
+    settings.windUnit,
+    themeId,
+  ]);
 
-  // Draw 1080×1080 Facebook canvas
+  // Animate 9:16 (1080×1920) single-page Rain Story canvas in real time
   useEffect(() => {
-    if (studioTab !== "facebook") return;
-    const canvas = fbCanvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d") as unknown as Canvas2DLike | null;
-    if (!ctx) return;
-    renderFacebookPost(ctx, 1080, 1080, renderPayload);
-  }, [studioTab, renderPayload]);
-
-  // Animate 1080×1920 Instagram Story canvas in real time (10s loop)
-  useEffect(() => {
-    if (studioTab !== "instagram") return;
-    const canvas = igCanvasRef.current;
+    const canvas = storyCanvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d") as unknown as Canvas2DLike | null;
     if (!ctx) return;
@@ -145,7 +145,7 @@ export function SocialStudioView({ payload, settings }: Props) {
     const tick = (now: number) => {
       const dt = (now - lastTs) / 1000;
       lastTs = now;
-      localT = (localT + dt) % 10;
+      localT = (localT + dt) % STORY_DURATION_SEC;
       setStoryTime(localT);
       renderStoryFrame(ctx, 1080, 1920, localT, renderPayload);
       rafId = requestAnimationFrame(tick);
@@ -154,7 +154,7 @@ export function SocialStudioView({ payload, settings }: Props) {
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studioTab, playing, renderPayload]);
+  }, [playing, renderPayload]);
 
   const downloadCanvasPng = (canvas: HTMLCanvasElement | null, filename: string) => {
     if (!canvas) return;
@@ -185,11 +185,12 @@ export function SocialStudioView({ payload, settings }: Props) {
     }
   };
 
-  const handleExportMp4 = async () => {
+  const handleExportVideo = async () => {
     setRenderingMp4(true);
     setMp4Error(null);
     try {
-      // Static GitHub Pages mode: record real 10-second animated video directly from Canvas via MediaRecorder
+      const safeCity = payload.location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
       if (IS_STATIC_PAGES) {
         const offscreen = document.createElement("canvas");
         offscreen.width = 1080;
@@ -218,8 +219,8 @@ export function SocialStudioView({ payload, settings }: Props) {
         await new Promise<void>((resolve) => {
           const step = (now: number) => {
             const elapsed = (now - startTime) / 1000;
-            renderStoryFrame(ctx, 1080, 1920, Math.min(10, elapsed), renderPayload);
-            if (elapsed < 10) {
+            renderStoryFrame(ctx, 1080, 1920, Math.min(STORY_DURATION_SEC, elapsed), renderPayload);
+            if (elapsed < STORY_DURATION_SEC) {
               requestAnimationFrame(step);
             } else {
               recorder.stop();
@@ -232,7 +233,7 @@ export function SocialStudioView({ payload, settings }: Props) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `vaanam-${payload.location.name.toLowerCase().replace(/\s+/g, "-")}-story-10s.${ext}`;
+        a.download = `vaanam-${safeCity}-9x16-rain-video.${ext}`;
         a.click();
         URL.revokeObjectURL(url);
         return;
@@ -251,11 +252,11 @@ export function SocialStudioView({ payload, settings }: Props) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `vaanam-${payload.location.name.toLowerCase().replace(/\s+/g, "-")}-story-10s.mp4`;
+      a.download = `vaanam-${safeCity}-9x16-rain-video.mp4`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      setMp4Error(err instanceof Error ? err.message : "Failed to render MP4");
+      setMp4Error(err instanceof Error ? err.message : "Failed to render 9:16 video");
     } finally {
       setRenderingMp4(false);
     }
@@ -271,32 +272,14 @@ export function SocialStudioView({ payload, settings }: Props) {
             Social Weather Studio — {payload.location.name}
           </h1>
           <p className="text-xs text-slate-400">
-            100% real ECMWF forecast creatives: 1080×1080 Facebook Posts &amp; 10-second animated 1080×1920 H.264 MP4 Instagram Stories
+            Unified 9:16 (1080 × 1920) single-page animated Rain Video, 9:16 PNG &amp; bilingual social captions
           </p>
         </div>
 
-        <div className="inline-flex rounded-2xl bg-slate-900/90 border border-violet-500/30 p-1">
-          <button
-            onClick={() => setStudioTab("facebook")}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition ${
-              studioTab === "facebook"
-                ? "bg-violet-500/25 text-violet-100 border border-violet-400/40"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <ImageIcon className="w-3.5 h-3.5" /> Facebook Post (1:1)
-          </button>
-          <button
-            onClick={() => setStudioTab("instagram")}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition ${
-              studioTab === "instagram"
-                ? "bg-violet-500/25 text-violet-100 border border-violet-400/40"
-                : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Film className="w-3.5 h-3.5" /> Instagram Story (9:16 MP4)
-          </button>
-        </div>
+        <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-violet-500/20 border border-violet-400/40 text-violet-100 text-xs font-bold">
+          <Film className="w-3.5 h-3.5 text-cyan-300" />
+          9:16 Format Only (1080 × 1920)
+        </span>
       </div>
 
       {/* Controls Bar: Forecast Day + Language + Theme Selector */}
@@ -307,7 +290,8 @@ export function SocialStudioView({ payload, settings }: Props) {
               Forecast Day:
             </span>
             {payload.daily30.slice(0, 5).map((d, idx) => {
-              const label = idx === 0 ? "Today" : idx === 1 ? "Tomorrow" : formatDateShort(d.date).weekday;
+              const label =
+                idx === 0 ? "Today" : idx === 1 ? "Tomorrow" : formatDateShort(d.date).weekday;
               return (
                 <button
                   key={d.date}
@@ -346,7 +330,7 @@ export function SocialStudioView({ payload, settings }: Props) {
           </div>
         </div>
 
-        {/* 10 Visual Story Themes */}
+        {/* 10 Visual Themes */}
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center gap-1.5">
             <Palette className="w-3.5 h-3.5 text-violet-400" />
@@ -380,188 +364,130 @@ export function SocialStudioView({ payload, settings }: Props) {
         </div>
       </div>
 
-      {/* FACEBOOK POST STUDIO (1:1 1080×1080) */}
-      {studioTab === "facebook" && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <div className="glass-card rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">1080 × 1080 Square Post Preview</h2>
-              <button
-                onClick={() => setDesignVariant((v) => (v + 1) % 4)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-200 font-medium"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Generate Another Design
-              </button>
-            </div>
-
-            <div className="w-full max-w-[520px] mx-auto aspect-square rounded-2xl overflow-hidden border border-cyan-500/25 shadow-2xl">
-              <canvas
-                ref={fbCanvasRef}
-                width={1080}
-                height={1080}
-                className="w-full h-full block"
-              />
-            </div>
-
-            <div className="flex flex-wrap gap-2 justify-center">
-              <button
-                onClick={() =>
-                  downloadCanvasPng(
-                    fbCanvasRef.current,
-                    `vaanam-${payload.location.name.toLowerCase()}-fb-1080x1080.png`
-                  )
-                }
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition"
-              >
-                <Download className="w-4 h-4" /> Download 1080×1080 PNG
-              </button>
-              <button
-                onClick={handleNativeShare}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold text-xs border border-slate-700"
-              >
-                <Share2 className="w-4 h-4" /> Share Post
-              </button>
-            </div>
+      {/* UNIFIED 9:16 SINGLE-PAGE ANIMATED RAIN VIDEO & PNG STUDIO */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="glass-card rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white">
+              9:16 Single-Page Rain Preview (1080 × 1920 • {STORY_DURATION_SEC}s Loop)
+            </h2>
+            <span className="text-xs font-mono text-cyan-300">
+              {storyTime.toFixed(1)}s / {STORY_DURATION_SEC}.0s
+            </span>
           </div>
 
-          <div className="glass-card rounded-2xl p-5 flex flex-col justify-between gap-4">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white">
-                  Conversational Facebook Caption (Editable)
-                </h2>
+          <div className="w-full max-w-[310px] mx-auto aspect-[9/16] rounded-3xl overflow-hidden border-2 border-cyan-400/35 shadow-2xl bg-slate-950">
+            <canvas
+              ref={storyCanvasRef}
+              width={1080}
+              height={1920}
+              className="w-full h-full block"
+            />
+          </div>
+
+          <div className="flex items-center gap-3 max-w-[360px] mx-auto">
+            <button
+              onClick={() => setPlaying((p) => !p)}
+              className="p-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-100"
+              aria-label={playing ? "Pause preview" : "Play preview"}
+            >
+              {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+            </button>
+            <input
+              type="range"
+              min={0}
+              max={STORY_DURATION_SEC}
+              step={0.1}
+              value={Math.min(storyTime, STORY_DURATION_SEC)}
+              onChange={(e) => {
+                setPlaying(false);
+                setStoryTime(Number(e.target.value));
+              }}
+              className="flex-1 accent-cyan-400"
+            />
+          </div>
+
+          {mp4Error && (
+            <div className="rounded-xl bg-rose-950/35 border border-rose-500/40 p-3 text-xs text-rose-200">
+              {mp4Error}
+            </div>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+            <button
+              onClick={handleExportVideo}
+              disabled={renderingMp4}
+              className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 hover:from-cyan-400 hover:to-violet-400 text-slate-950 font-extrabold text-xs transition disabled:opacity-60"
+            >
+              {renderingMp4 ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Rendering 9:16 Video...
+                </>
+              ) : (
+                <>
+                  <Film className="w-4 h-4" /> Export 9:16 Rain Video
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={() =>
+                downloadCanvasPng(
+                  storyCanvasRef.current,
+                  `vaanam-${payload.location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-9x16-1080x1920.png`
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-100 font-bold text-xs border border-cyan-400/40 transition"
+            >
+              <Download className="w-4 h-4" /> Download 9:16 PNG
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column: Editable Social Caption + Single-Page Feature Summary */}
+        <div className="glass-card rounded-2xl p-6 flex flex-col justify-between gap-5">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-semibold text-white">
+                Social Caption (Editable • Ready for Reels, Stories &amp; Status)
+              </h2>
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={handleCopyCaption}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-100 text-xs font-semibold"
                 >
                   {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copied ? "Copied!" : "Copy Caption"}
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+                <button
+                  onClick={handleNativeShare}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 text-xs font-semibold"
+                >
+                  <Share2 className="w-3.5 h-3.5" /> Share
                 </button>
               </div>
-              <textarea
-                value={caption}
-                onChange={(e) => setCaption(e.target.value)}
-                rows={16}
-                className="w-full rounded-2xl bg-slate-950/75 border border-slate-800 p-4 text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-cyan-400/60 font-sans"
-              />
             </div>
 
+            <textarea
+              value={caption}
+              onChange={(e) =>
+                setCaptionEdits((prev) => ({ ...prev, [captionKey]: e.target.value }))
+              }
+              rows={13}
+              className="w-full rounded-2xl bg-slate-950/75 border border-slate-800 p-4 text-xs text-slate-200 leading-relaxed focus:outline-none focus:border-cyan-400/60 font-sans"
+            />
+          </div>
+
+          <div className="space-y-2 text-xs">
+            <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
+              <strong className="text-cyan-300">Single-Page 9:16 Layout:</strong> Rain probability %, expected rainfall, heavy-rain risk, wind, humidity, confidence, 5-slot hourly rain timeline &amp; advisory — all visible without scene cuts.
+            </div>
             <p className="text-[11px] text-slate-400">
-              All temperatures, rain probabilities, rainfall totals, and wind speeds above are
-              populated directly from live ECMWF IFS &amp; ENS model runs.
+              All values are populated directly from live ECMWF IFS 0.25° &amp; ENS 51-member runs.
             </p>
           </div>
         </div>
-      )}
-
-      {/* INSTAGRAM STORY STUDIO (9:16 1080×1920 + REAL 10s MP4) */}
-      {studioTab === "instagram" && (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-          <div className="glass-card rounded-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-white">
-                9:16 Animated Story Preview (1080 × 1920 • 10s)
-              </h2>
-              <span className="text-xs font-mono text-cyan-300">{storyTime.toFixed(1)}s / 10.0s</span>
-            </div>
-
-            <div className="w-full max-w-[300px] mx-auto aspect-[9/16] rounded-3xl overflow-hidden border-2 border-cyan-400/35 shadow-2xl bg-slate-950">
-              <canvas
-                ref={igCanvasRef}
-                width={1080}
-                height={1920}
-                className="w-full h-full block"
-              />
-            </div>
-
-            <div className="flex items-center gap-3 max-w-[360px] mx-auto">
-              <button
-                onClick={() => setPlaying((p) => !p)}
-                className="p-2 rounded-xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-100"
-              >
-                {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={10}
-                step={0.1}
-                value={storyTime}
-                onChange={(e) => {
-                  setPlaying(false);
-                  setStoryTime(Number(e.target.value));
-                }}
-                className="flex-1 accent-cyan-400"
-              />
-            </div>
-          </div>
-
-          <div className="glass-card rounded-2xl p-6 flex flex-col justify-between gap-5">
-            <div className="space-y-4">
-              <h2 className="text-base font-bold text-white">
-                10-Second Animated Story Export (H.264 MP4)
-              </h2>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Generates a genuine, frame-by-frame animated <strong>1080 × 1920 H.264 MP4</strong>{" "}
-                video (10.0 seconds, 20 fps, yuv420p) on the server using Canvas + FFmpeg — with
-                animated clouds, moving rain/wind particles, thunderstorm lightning flashes,
-                counting temperature reveal, and live forecast timeline.
-              </p>
-
-              <div className="space-y-2 text-xs">
-                <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
-                  <strong className="text-cyan-300">0–2s:</strong> Location reveal &amp; dramatic weather introduction
-                </div>
-                <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
-                  <strong className="text-cyan-300">2–5s:</strong> Weather condition animation &amp; animated temperature counter
-                </div>
-                <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
-                  <strong className="text-cyan-300">5–8s:</strong> Rain probability, wind speed, confidence &amp; hourly timeline
-                </div>
-                <div className="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
-                  <strong className="text-cyan-300">8–10s:</strong> VAANAM AI branding, briefing &amp; share prompt
-                </div>
-              </div>
-
-              {mp4Error && (
-                <div className="rounded-xl bg-rose-950/35 border border-rose-500/40 p-3 text-xs text-rose-200">
-                  {mp4Error}
-                </div>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={handleExportMp4}
-                disabled={renderingMp4}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 hover:from-cyan-400 hover:to-violet-400 text-slate-950 font-extrabold text-xs transition disabled:opacity-60"
-              >
-                {renderingMp4 ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Rendering 10s H.264 MP4...
-                  </>
-                ) : (
-                  <>
-                    <Film className="w-4 h-4" /> Export 10s Animated MP4 (1080×1920)
-                  </>
-                )}
-              </button>
-
-              <button
-                onClick={() =>
-                  downloadCanvasPng(
-                    igCanvasRef.current,
-                    `vaanam-${payload.location.name.toLowerCase()}-story-1080x1920.png`
-                  )
-                }
-                className="inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-semibold text-xs border border-slate-700"
-              >
-                <Download className="w-4 h-4" /> Static Story PNG
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   );
 }

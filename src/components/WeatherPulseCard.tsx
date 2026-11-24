@@ -198,7 +198,7 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
     if (!canvas) return;
     const slug = location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     const link = document.createElement("a");
-    link.download = `vaanam-weather-pulse-${slug}-1080x1350.png`;
+    link.download = `vaanam-weather-pulse-${slug}-9x16-1080x1920.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
   };
@@ -207,7 +207,7 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
     const canvas = shareCanvasRef.current;
     if (!canvas) return;
     const slug = location.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    const filename = `vaanam-weather-pulse-${slug}-1080x1350.png`;
+    const filename = `vaanam-weather-pulse-${slug}-9x16-1080x1920.png`;
 
     try {
       const blob = await new Promise<Blob | null>((resolve) =>
@@ -664,18 +664,18 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
       </section>
 
       {/* ================================================================
-          SHARE AS PNG (1080 × 1350) PREVIEW & DOWNLOAD MODAL
+          SHARE AS PNG (9:16 • 1080 × 1920) PREVIEW & DOWNLOAD MODAL
          ================================================================ */}
       {shareModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-lg rounded-3xl bg-[#071124] border border-cyan-500/35 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+          <div className="w-full max-w-md rounded-3xl bg-[#071124] border border-cyan-500/35 shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
             <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-bold text-white">
-                  Share Weather Pulse as PNG (1080 × 1350)
+                  Share Weather Pulse as 9:16 PNG (1080 × 1920)
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Includes headline, metrics, top upcoming timeline events &amp; confidence badges
+                  9:16 vertical format with headline, metrics, top timeline events &amp; confidence
                 </p>
               </div>
               <button
@@ -691,8 +691,8 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
               <canvas
                 ref={shareCanvasRef}
                 width={1080}
-                height={1350}
-                className="w-full max-w-[360px] aspect-[4/5] rounded-2xl border border-cyan-500/25 shadow-2xl block"
+                height={1920}
+                className="w-full max-w-[300px] aspect-[9/16] rounded-2xl border border-cyan-500/25 shadow-2xl block"
               />
             </div>
 
@@ -709,7 +709,7 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-extrabold transition"
               >
                 <Download className="w-4 h-4" />
-                Download 1080×1350 PNG
+                Download 9:16 PNG
               </button>
             </div>
           </div>

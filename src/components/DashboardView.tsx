@@ -102,7 +102,7 @@ export function DashboardView({ payload, settings, onNavigate }: Props) {
           </div>
           <h3 className="font-semibold text-slate-100 mt-3">Social Weather Studio</h3>
           <p className="text-xs text-slate-400 mt-1">
-            1080×1080 Facebook posts &amp; 10-second animated 1080×1920 MP4 Instagram Stories.
+            9:16 (1080×1920) animated Rain Story videos, 9:16 PNGs &amp; bilingual social captions.
           </p>
         </button>
       </div>
