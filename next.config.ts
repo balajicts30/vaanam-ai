@@ -1,9 +1,21 @@
 import type { NextConfig } from "next";
 
+const isStaticExport = process.env.NEXT_PUBLIC_STATIC_EXPORT === "true";
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || "";
+
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
+  ...(isStaticExport
+    ? {
+        output: "export",
+        trailingSlash: true,
+        ...(basePath ? { basePath, assetPrefix: basePath } : {}),
+      }
+    : {
+        serverExternalPackages: ["ffmpeg-static", "@napi-rs/canvas"],
+      }),
+  images: {
+    unoptimized: true,
+  },
   turbopack: {
     rules: {
       "*.css": {
