@@ -4,16 +4,12 @@ import React from "react";
 import {
   AlertTriangle,
   ArrowRight,
-  CloudRain,
-  Droplets,
-  Gauge,
   Radio,
   ShieldCheck,
   Sparkles,
   Sun,
   Thermometer,
   Video,
-  Wind,
 } from "lucide-react";
 import {
   Area,
@@ -24,15 +20,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { resolveWeatherPhoto } from "@/lib/photography";
 import {
   convertTemp,
   formatDateShort,
   formatHourLabel,
-  formatRain,
   formatTemp,
-  formatWind,
-  windDirectionToCompass,
 } from "@/lib/units";
 import { getWeatherCodeInfo } from "@/lib/weather-codes";
 import {
@@ -40,6 +32,7 @@ import {
   UserSettings,
   WeatherIntelligencePayload,
 } from "@/types/weather";
+import { WeatherPulseCard } from "./WeatherPulseCard";
 
 interface Props {
   payload: WeatherIntelligencePayload;
@@ -48,9 +41,7 @@ interface Props {
 }
 
 export function DashboardView({ payload, settings, onNavigate }: Props) {
-  const { location, current, hourly, daily30, alerts, comparison } = payload;
-  const curInfo = getWeatherCodeInfo(current.weatherCode);
-  const photo = resolveWeatherPhoto(current.weatherCode, current.temperature, location.name);
+  const { hourly, daily30, alerts } = payload;
   const next24 = hourly.slice(0, 24).map((h) => ({
     label: formatHourLabel(h.time, settings.clockFormat),
     temp: convertTemp(h.temperature, settings.tempUnit),
@@ -59,127 +50,11 @@ export function DashboardView({ payload, settings, onNavigate }: Props) {
   }));
 
   const week1 = daily30.slice(0, 7);
-  const today = daily30[0];
 
   return (
     <div className="space-y-6">
-      {/* Hero Current Conditions Card with Attributed Editorial Photography */}
-      <div className="relative overflow-hidden rounded-3xl border border-cyan-500/25 shadow-2xl">
-        <div
-          className="absolute inset-0 bg-cover bg-center opacity-30 scale-105"
-          style={{ backgroundImage: `url(${photo.url})` }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#040914]/95 via-[#07152e]/85 to-[#040914]/75" />
-
-        <div className="relative z-10 p-6 lg:p-8 flex flex-col xl:flex-row xl:items-end justify-between gap-6">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-cyan-500/20 border border-cyan-400/35 text-cyan-200 text-xs font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                LIVE MODEL FEED
-              </span>
-              <span className="px-2.5 py-1 rounded-full bg-slate-900/70 border border-slate-700/70 text-slate-300 text-xs">
-                Confidence: <strong className="text-cyan-300">{payload.dataQuality.overallConfidence}</strong>
-              </span>
-              <span className="px-2.5 py-1 rounded-full bg-slate-900/70 border border-slate-700/70 text-slate-300 text-xs">
-                Model Agreement: <strong className="text-sky-300">{comparison.agreementLevel}</strong>
-              </span>
-            </div>
-
-            <div>
-              <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-white">
-                {location.name}
-              </h1>
-              <p className="text-sm text-slate-300 mt-0.5">
-                {[location.district, location.state, location.country].filter(Boolean).join(", ")} •{" "}
-                <span className="font-mono text-xs text-slate-400">
-                  {location.latitude.toFixed(3)}°N, {location.longitude.toFixed(3)}°E
-                </span>
-              </p>
-            </div>
-
-            <div className="flex items-center gap-4 pt-1">
-              <span className="text-6xl sm:text-7xl font-extrabold tracking-tighter text-white">
-                {formatTemp(current.temperature, settings.tempUnit)}
-              </span>
-              <div className="space-y-1">
-                <div className="text-xl font-semibold text-cyan-200 flex items-center gap-2">
-                  <span>{curInfo.emoji}</span>
-                  <span>{curInfo.label}</span>
-                </div>
-                <div className="text-xs text-slate-300">
-                  Feels like {formatTemp(current.feelsLike, settings.tempUnit)} • Today{" "}
-                  {formatTemp(today?.tempMin, settings.tempUnit)} /{" "}
-                  {formatTemp(today?.tempMax, settings.tempUnit)}
-                </div>
-                <div className="text-[11px] text-slate-400">
-                  Source: {current.sourceModel}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Key Telemetry Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 xl:w-[500px]">
-            <div className="rounded-2xl bg-slate-950/65 border border-slate-800/90 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 uppercase font-semibold">
-                <CloudRain className="w-3.5 h-3.5 text-cyan-400" /> Rain Prob
-              </div>
-              <div className="text-xl font-bold text-white mt-1">
-                {current.rainProbability !== null ? `${current.rainProbability}%` : "—"}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                {formatRain(today?.precipitationSum, settings.rainUnit)} today
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-slate-950/65 border border-slate-800/90 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 uppercase font-semibold">
-                <Wind className="w-3.5 h-3.5 text-sky-400" /> Wind
-              </div>
-              <div className="text-xl font-bold text-white mt-1">
-                {formatWind(current.windSpeed, settings.windUnit)}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Dir: {windDirectionToCompass(current.windDirection)}
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-slate-950/65 border border-slate-800/90 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 uppercase font-semibold">
-                <Droplets className="w-3.5 h-3.5 text-blue-400" /> Humidity
-              </div>
-              <div className="text-xl font-bold text-white mt-1">
-                {current.humidity !== null ? `${current.humidity}%` : "—"}
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Dew {formatTemp(current.dewPoint, settings.tempUnit)}
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-slate-950/65 border border-slate-800/90 p-3.5">
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 uppercase font-semibold">
-                <Gauge className="w-3.5 h-3.5 text-indigo-400" /> Pressure
-              </div>
-              <div className="text-xl font-bold text-white mt-1">
-                {current.pressure !== null ? `${Math.round(current.pressure)}` : "—"}
-                <span className="text-xs font-normal text-slate-400"> hPa</span>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Clouds {current.cloudCover ?? "—"}%
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Attribution strip */}
-        <div className="relative z-10 px-6 py-2 bg-slate-950/60 border-t border-white/5 flex flex-wrap items-center justify-between text-[10px] text-slate-400 gap-2">
-          <span>{photo.disclaimer}</span>
-          <span>
-            Visual: {photo.title} ({photo.license})
-          </span>
-        </div>
-      </div>
+      {/* Main VAANAM AI Weather Pulse Card with Integrated Upcoming Weather Timeline */}
+      <WeatherPulseCard payload={payload} settings={settings} onNavigate={onNavigate} />
 
       {/* Quick Action Studio & Intelligence Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -231,6 +231,76 @@ export interface RainViewerPayload {
   retrievedAt: string;
 }
 
+export type TimelineEventKind =
+  | "clouds"
+  | "rain"
+  | "heavy_rain"
+  | "thunderstorm"
+  | "wind"
+  | "temperature"
+  | "clearing";
+
+export type TimelineSourceType =
+  | "radar_observation"
+  | "radar_estimate"
+  | "model_forecast";
+
+export type PulseStatusMode = "LIVE_RADAR" | "NOWCAST" | "FORECAST";
+
+export interface TimelineEvent {
+  id: string;
+  kind: TimelineEventKind;
+  headline: string;
+  explanation: string;
+  /** Local ISO-like timestamp (YYYY-MM-DDTHH:MM) or ISO string */
+  localTimeIso: string;
+  /** Display time formatted in the selected location's local timezone */
+  localTimeLabel: string;
+  /** Forecast hour offset from current time (0 = current/nowcast, 1..6 = hours ahead) */
+  hoursAhead: number;
+  sourceType: TimelineSourceType;
+  sourceProvider: string;
+  forecastValidTime: string;
+  observationTime: string | null;
+  confidence: "HIGH" | "MODERATE" | "LOW";
+  dataFreshness: string;
+  /** Priority score (higher = more significant, used for PNG top 3-4 selection) */
+  priority: number;
+  /** Whether opening the Live Radar view is relevant for this event */
+  radarRelevant: boolean;
+  /** Underlying forecast metrics for interactive inspection */
+  details: {
+    temperature: number | null;
+    feelsLike: number | null;
+    rainProbability: number | null;
+    precipitation: number | null;
+    windSpeed: number | null;
+    windDirection: number | null;
+    cloudCover: number | null;
+    pressure: number | null;
+    humidity: number | null;
+    weatherCode: number;
+    weatherLabel: string;
+  };
+}
+
+export interface WeatherPulseSummary {
+  statusMode: PulseStatusMode;
+  statusLabel: string;
+  headline: string;
+  arrivalEstimate: string | null;
+  explanation: string;
+  actionRecommendation: string;
+  dominantKind: TimelineEventKind | "steady";
+  expectedRainNext6hMm: number;
+  maxRainProbNext6h: number | null;
+  confidence: "HIGH" | "MODERATE" | "LOW";
+  lastUpdatedLocal: string;
+  dataFreshnessLabel: string;
+  radarObservationTimeLabel: string | null;
+  events: TimelineEvent[];
+}
+
 export interface WeatherGridNode {
   lat: number;
   lon: number;
