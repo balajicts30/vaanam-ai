@@ -72,6 +72,8 @@ export interface CurrentConditions {
   uvIndex: number | null;
   weatherCode: number;
   isDay: boolean;
+  isRainingNow?: boolean;
+  liveObservationNote?: string;
   sourceModel: string;
 }
 

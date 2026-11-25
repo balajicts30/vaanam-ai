@@ -202,13 +202,13 @@ export function buildWeatherPulse(
 
   const events: TimelineEvent[] = [];
 
-  // Baseline current state for change detection
+  // Baseline current state for change detection — strictly driven by LIVE observed precipitation right now
   const curPrecip = current.precipitation ?? 0;
   const curClouds = current.cloudCover ?? 0;
   const curWind = current.windSpeed ?? 0;
   const curTemp = current.temperature;
-  const curIsRaining = curPrecip >= 0.2 || isRainCode(current.weatherCode) || isThunderCode(current.weatherCode);
-  const curIsThunder = isThunderCode(current.weatherCode);
+  const curIsRaining = current.isRainingNow === true || curPrecip >= 0.15;
+  const curIsThunder = curIsRaining && isThunderCode(current.weatherCode);
 
   // 1. Radar observation / nowcast event ONLY when supported by live RainViewer frames AND active/imminent precipitation
   const nextHour = upcomingHours[0];
@@ -588,90 +588,56 @@ export function buildWeatherPulse(
   const maxRainProbNext6h =
     rainProbs.length > 0 ? Math.max(...rainProbs) : current.rainProbability;
 
-  // Build Main Weather Pulse Alert (Headline, Arrival Estimate, Explanation, Action Recommendation)
+  // Build Main Weather Pulse Headline strictly anchored to PRESENT LIVE CLIMATE FEEL.
+  // If it is shining/dry right now, the live headline MUST show the present dry/shining sky —
+  // never overriding live sunshine with a later forecast rain alert!
   const topEvent = [...events].sort((a, b) => b.priority - a.priority)[0] ?? null;
+  const curInfo = getWeatherCodeInfo(current.weatherCode);
 
-  let headline = "Steady weather conditions ahead";
-  let arrivalEstimate: string | null = null;
-  let explanation =
-    "Current observations and short-range model guidance show calm, steady conditions over the next few hours.";
-  let actionRecommendation = "No special weather precautions needed right now.";
-  let dominantKind: TimelineEventKind | "steady" = "steady";
+  let headline =
+    !curIsRaining
+      ? current.isDay && curClouds <= 30
+        ? "Shining & Dry Right Now"
+        : curClouds <= 65
+        ? `${curInfo.label} & Dry Right Now`
+        : "Overcast & Dry Right Now"
+      : curIsThunder
+      ? "Active Thunderstorm Right Now"
+      : curPrecip >= 4
+      ? "Heavy Rainfall Active Right Now"
+      : "Rainfall Active Right Now";
 
-  if (topEvent) {
-    dominantKind = topEvent.kind;
-    const etaStr =
-      topEvent.hoursAhead === 0
-        ? "Happening now"
-        : topEvent.hoursAhead < 1
-        ? `Possible within ~30–45 mins (${topEvent.localTimeLabel})`
-        : `Approximately ${topEvent.hoursAhead} hour${topEvent.hoursAhead > 1 ? "s" : ""} away (near ${topEvent.localTimeLabel})`;
+  let arrivalEstimate: string | null = !curIsRaining
+    ? "Live Now: 0.0 mm observed"
+    : `Live Now: ~${formatRain(curPrecip, settings.rainUnit)}/h`;
 
-    if (topEvent.kind === "thunderstorm") {
-      headline =
-        topEvent.hoursAhead === 0
-          ? "Thunderstorm activity nearby"
-          : "Thunderstorm possible in the coming hours";
-      arrivalEstimate = etaStr;
-      explanation = topEvent.explanation;
-      actionRecommendation =
-        "Plan outdoor travel carefully, avoid open areas during lightning, and track cells on Live Radar.";
-    } else if (topEvent.kind === "heavy_rain") {
-      headline =
-        topEvent.hoursAhead === 0
-          ? "Heavy rainfall currently active"
-          : "Heavier showers may develop";
-      arrivalEstimate = etaStr;
-      explanation = topEvent.explanation;
-      actionRecommendation =
-        "Carry rain gear, allow extra commute time, and watch for localised waterlogging.";
-    } else if (topEvent.kind === "rain") {
-      if (topEvent.headline.includes("WEAKEN") || topEvent.headline.includes("TAPER")) {
-        headline = "Rain is expected to ease gradually";
-        arrivalEstimate = `Easing around ${topEvent.localTimeLabel}`;
-        explanation = topEvent.explanation;
-        actionRecommendation = "Keep light rain protection handy until showers fully clear.";
-      } else {
-        headline =
-          topEvent.hoursAhead === 0
-            ? "Rainfall currently observed"
-            : "Rain is approaching!";
-        arrivalEstimate = etaStr;
-        explanation = topEvent.explanation;
-        actionRecommendation = "Keep your umbrella ready and check Live Radar before heading out.";
-      }
-    } else if (topEvent.kind === "wind") {
-      headline = "Breezy winds building";
-      arrivalEstimate = etaStr;
-      explanation = topEvent.explanation;
-      actionRecommendation = "Secure loose outdoor items and expect gustier stretches on open roads.";
-    } else if (topEvent.kind === "clouds") {
-      headline = "Cloud cover increasing";
-      arrivalEstimate = etaStr;
-      explanation = topEvent.explanation;
-      actionRecommendation = "Expect dimmer skies; monitor updates if showers develop later.";
-    } else if (topEvent.kind === "clearing") {
-      headline = "Skies expected to clear";
-      arrivalEstimate = etaStr;
-      explanation = topEvent.explanation;
-      actionRecommendation = "Improving visibility and drier conditions ahead for outdoor plans.";
-    } else if (topEvent.kind === "temperature") {
-      headline =
-        topEvent.headline === "TEMPERATURES RISING"
-          ? "Noticeable warm-up ahead"
-          : "Cooler air moving in";
-      arrivalEstimate = etaStr;
-      explanation = topEvent.explanation;
-      actionRecommendation =
-        topEvent.headline === "TEMPERATURES RISING"
-          ? "Stay hydrated and avoid prolonged direct sun during peak hours."
-          : "Carry a light layer if you'll be outdoors later.";
+  let explanation = !curIsRaining
+    ? current.liveObservationNote ||
+      `${location.name} is currently dry with ${curInfo.label.toLowerCase()} skies (${curClouds}% cloud cover). Upcoming model forecasts are listed separately in the Forecast Timeline below.`
+    : `Active precipitation (~${formatRain(curPrecip, settings.rainUnit)}/h) is currently observed over ${location.name}.`;
+
+  let actionRecommendation = !curIsRaining
+    ? current.isDay && curClouds <= 35
+      ? "Clear, bright conditions right now — great for stepping outdoors. Check the Forecast Timeline below for later hours."
+      : "Dry right now — check the Forecast Timeline below for any changes later today."
+    : "Carry rain protection right now and track moving cells on Live Radar.";
+
+  let dominantKind: TimelineEventKind | "steady" = curIsRaining
+    ? curIsThunder
+      ? "thunderstorm"
+      : curPrecip >= 4
+      ? "heavy_rain"
+      : "rain"
+    : "steady";
+
+  // If dry right now, optionally add a clearly labeled forecast-only note without overriding the live sky headline
+  if (!curIsRaining && topEvent && topEvent.hoursAhead > 0) {
+    if (topEvent.kind === "rain" || topEvent.kind === "heavy_rain" || topEvent.kind === "thunderstorm") {
+      arrivalEstimate = `Dry now • Forecast later (~${topEvent.hoursAhead}h, near ${topEvent.localTimeLabel})`;
     }
-  } else {
-    const curInfo = getWeatherCodeInfo(current.weatherCode);
-    headline = `${curInfo.label} — steady skies ahead`;
-    explanation = `No significant weather transitions detected in the next ${horizonHours} hours from ECMWF short-range guidance.`;
-    actionRecommendation = "Great window for regular outdoor plans and travel.";
+  } else if (curIsRaining && topEvent && topEvent.hoursAhead === 0) {
+    dominantKind = topEvent.kind;
+    explanation = topEvent.explanation;
   }
 
   return {

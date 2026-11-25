@@ -5,6 +5,7 @@ import { buildModelComparison } from "./comparison";
 import { fetchEcmwfData } from "./ecmwf";
 import { fetchExtendedRangeDays16To30 } from "./extended";
 import { fetchNoaaHref } from "./href";
+import { fetchLiveNowConditions } from "./live-now";
 import { fetchWeatherNext3 } from "./weathernext";
 
 export async function getWeatherIntelligence(
@@ -51,10 +52,14 @@ export async function getWeatherIntelligence(
       ? d15Temps.reduce((a, b) => a + b, 0) / d15Temps.length
       : null;
 
-  const [extendedSettled, alertsSettled] = await Promise.allSettled([
+  const [extendedSettled, alertsSettled, liveNowSettled] = await Promise.allSettled([
     fetchExtendedRangeDays16To30(location.latitude, location.longitude, baselineMean),
     gatherWeatherAlerts(resolvedLocation, ecmwf.hourly, ecmwf.daily15),
+    fetchLiveNowConditions(location.latitude, location.longitude, ecmwf.current),
   ]);
+
+  const liveCurrent =
+    liveNowSettled.status === "fulfilled" ? liveNowSettled.value : ecmwf.current;
 
   const weatherNext =
     weatherNextSettled.status === "fulfilled"
@@ -154,7 +159,7 @@ export async function getWeatherIntelligence(
   const payload: WeatherIntelligencePayload = {
     location: resolvedLocation,
     retrievedAt: new Date().toISOString(),
-    current: ecmwf.current,
+    current: liveCurrent,
     hourly: ecmwf.hourly,
     daily30,
     models,

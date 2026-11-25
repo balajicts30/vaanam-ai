@@ -368,7 +368,7 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div className="rounded-2xl bg-slate-950/65 border border-slate-800/90 p-3.5">
               <div className="flex items-center gap-1.5 text-[11px] text-slate-400 uppercase font-semibold">
-                <CloudRain className="w-3.5 h-3.5 text-cyan-400" /> Rain Prob
+                <CloudRain className="w-3.5 h-3.5 text-cyan-400" /> Forecast Rain Prob
               </div>
               <div className="text-xl font-bold text-white mt-1">
                 {pulse.maxRainProbNext6h !== null
@@ -377,18 +377,20 @@ export function WeatherPulseCard({ payload, settings, onNavigate }: Props) {
                   ? `${current.rainProbability}%`
                   : "—"}
               </div>
-              <div className="text-[11px] text-slate-400">Next 6h peak</div>
+              <div className="text-[11px] text-slate-400">Next 6h forecast peak</div>
             </div>
 
             <div className="rounded-2xl bg-slate-950/65 border border-slate-800/90 p-3.5">
               <div className="flex items-center gap-1.5 text-[11px] text-slate-400 uppercase font-semibold">
-                <Droplets className="w-3.5 h-3.5 text-blue-400" /> Expected Rain
+                <Droplets className="w-3.5 h-3.5 text-blue-400" /> Live Now Rain
               </div>
               <div className="text-xl font-bold text-white mt-1">
-                {formatRain(pulse.expectedRainNext6hMm, settings.rainUnit)}
+                {current.isRainingNow
+                  ? formatRain(current.precipitation, settings.rainUnit)
+                  : "0.0 mm"}
               </div>
               <div className="text-[11px] text-slate-400">
-                {formatRain(today?.precipitationSum, settings.rainUnit)} today
+                Forecast 6h: {formatRain(pulse.expectedRainNext6hMm, settings.rainUnit)}
               </div>
             </div>
 

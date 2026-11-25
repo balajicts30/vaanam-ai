@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { getZoomEarthUrl } from "@/lib/location";
 import { apiFetchRadar } from "@/lib/client-api";
-import { formatRain, formatWind, windDirectionToCompass } from "@/lib/units";
+import { formatRain, formatTemp, formatWind, windDirectionToCompass } from "@/lib/units";
+import { getWeatherCodeInfo } from "@/lib/weather-codes";
 import { RainViewerPayload, UserSettings, WeatherIntelligencePayload } from "@/types/weather";
 
 interface Props {
@@ -40,6 +41,78 @@ export function LiveRadarView({ payload, settings }: Props) {
   const [playing, setPlaying] = useState(true);
   const [frameIdx, setFrameIdx] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [radarEchoStatus, setRadarEchoStatus] = useState<
+    "CHECKING" | "DRY_CLEAR" | "LIGHT_ECHO" | "HEAVY_ECHO"
+  >("CHECKING");
+
+  // Sample the actual latest OBSERVED RainViewer radar tile pixel directly over (lat, lon)
+  // so the Present Climate Feel panel reflects real live radar overhead, never forecast rain!
+  useEffect(() => {
+    const latestObserved = radarData?.radarPast?.[radarData.radarPast.length - 1];
+    if (!radarData || !latestObserved) return;
+
+    let cancelled = false;
+    setRadarEchoStatus("CHECKING");
+
+    const zoom = 8;
+    const n = 2 ** zoom;
+    const latRad = (location.latitude * Math.PI) / 180;
+    const xFloat = ((location.longitude + 180) / 360) * n;
+    const yFloat =
+      ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+    const tileX = Math.floor(xFloat);
+    const tileY = Math.floor(yFloat);
+    const px = Math.min(255, Math.max(0, Math.floor((xFloat - tileX) * 256)));
+    const py = Math.min(255, Math.max(0, Math.floor((yFloat - tileY) * 256)));
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (cancelled) return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = 256;
+        canvas.height = 256;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(img, 0, 0);
+        // Sample 5×5 neighborhood around exact coordinate
+        const data = ctx.getImageData(
+          Math.max(0, px - 2),
+          Math.max(0, py - 2),
+          5,
+          5
+        ).data;
+        let maxAlpha = 0;
+        let maxRed = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const a = data[i + 3];
+          if (a > maxAlpha) maxAlpha = a;
+          if (a > 60 && r > maxRed) maxRed = r;
+        }
+        if (maxAlpha < 25) {
+          setRadarEchoStatus("DRY_CLEAR");
+        } else if (maxRed >= 200) {
+          setRadarEchoStatus("HEAVY_ECHO");
+        } else {
+          setRadarEchoStatus("LIGHT_ECHO");
+        }
+      } catch {
+        setRadarEchoStatus(current.isRainingNow ? "LIGHT_ECHO" : "DRY_CLEAR");
+      }
+    };
+    img.onerror = () => {
+      if (!cancelled) {
+        setRadarEchoStatus(current.isRainingNow ? "LIGHT_ECHO" : "DRY_CLEAR");
+      }
+    };
+    img.src = `${radarData.host}${latestObserved.path}/256/${zoom}/${tileX}/${tileY}/2/1_1.png`;
+
+    return () => {
+      cancelled = true;
+    };
+  }, [radarData, location.latitude, location.longitude, current.isRainingNow]);
 
   const zoomEarthUrl = getZoomEarthUrl(location);
 
@@ -392,15 +465,60 @@ export function LiveRadarView({ payload, settings }: Props) {
             )}
 
             <div className="space-y-2.5">
-              <div className="rounded-xl bg-slate-950/65 border border-slate-800 p-3">
-                <div className="text-[11px] text-slate-400">Current Precipitation</div>
-                <div className="text-base font-bold text-white mt-0.5">
-                  {formatRain(current.precipitation, settings.rainUnit)}
+              {/* Present Climate Feel verified by Live Radar + Present Sky */}
+              <div
+                className={`rounded-xl p-3 border ${
+                  radarEchoStatus === "DRY_CLEAR" && !current.isRainingNow
+                    ? "bg-emerald-950/35 border-emerald-500/40"
+                    : "bg-blue-950/35 border-blue-500/40"
+                }`}
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
+                  Present Climate Feel (Live Now — Not Forecast)
                 </div>
-                <div className="text-[11px] text-cyan-300">
-                  {current.precipitation && current.precipitation > 0.1
-                    ? "Active rainfall detected in model observation"
-                    : "Dry / light trace at station coordinate"}
+                <div className="text-lg font-extrabold text-white mt-1 flex items-center gap-2">
+                  <span>
+                    {radarEchoStatus === "DRY_CLEAR" && !current.isRainingNow
+                      ? current.isDay && (current.cloudCover ?? 0) <= 35
+                        ? "☀️"
+                        : "⛅"
+                      : getWeatherCodeInfo(current.weatherCode).emoji}
+                  </span>
+                  <span>
+                    {radarEchoStatus === "DRY_CLEAR" && !current.isRainingNow
+                      ? current.isDay && (current.cloudCover ?? 0) <= 35
+                        ? "Shining & Dry Now"
+                        : (current.cloudCover ?? 0) <= 70
+                        ? "Partly Cloudy & Dry Now"
+                        : "Cloudy & Dry Now"
+                      : radarEchoStatus === "HEAVY_ECHO"
+                      ? "Heavy Rain Echo Overhead"
+                      : "Rain / Showers Overhead"}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-200 mt-1">
+                  Now: <strong>{formatTemp(current.temperature, settings.tempUnit)}</strong> (Feels{" "}
+                  {formatTemp(current.feelsLike, settings.tempUnit)}) • Clouds{" "}
+                  {current.cloudCover ?? "—"}%
+                </div>
+                <div className="text-[11px] text-emerald-300/90 mt-1">
+                  {radarEchoStatus === "CHECKING"
+                    ? "Sampling live radar pixel over your coordinates..."
+                    : radarEchoStatus === "DRY_CLEAR"
+                    ? "Verified: No active rain echo overhead on live observed radar."
+                    : "Verified: Active precipitation echo detected on live observed radar."}
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-950/65 border border-slate-800 p-3">
+                <div className="text-[11px] text-slate-400">Live Observed Precipitation</div>
+                <div className="text-base font-bold text-white mt-0.5">
+                  {current.isRainingNow
+                    ? formatRain(current.precipitation, settings.rainUnit)
+                    : "0.0 mm (Dry Right Now)"}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Forecast probabilities are shown separately in Forecast views.
                 </div>
               </div>
 

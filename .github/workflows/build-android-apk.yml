@@ -1,0 +1,81 @@
+name: Build VAANAM AI Android APK
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Setup Java 21 (for Android Gradle Plugin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare static web bundle for Android WebView
+        run: rm -rf src/app/api
+
+      - name: Build static Next.js bundle (out/)
+        env:
+          NEXT_PUBLIC_STATIC_EXPORT: "true"
+          NEXT_PUBLIC_BASE_PATH: ""
+        run: npm run build
+
+      - name: Generate Android project with Capacitor
+        run: |
+          npx cap add android
+          npx cap sync android
+
+      - name: Configure Android permissions (Location & Internet)
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          grep -q "ACCESS_FINE_LOCATION" "$MANIFEST" || sed -i '/<manifest/a \    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />' "$MANIFEST"
+
+      - name: Build Android APK (Debug — directly installable)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Rename APK for easy download
+        run: |
+          mkdir -p apk-output
+          cp android/app/build/outputs/apk/debug/app-debug.apk apk-output/VAANAM-AI-Android.apk
+
+      - name: Upload VAANAM-AI-Android.apk Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VAANAM-AI-Android-APK
+          path: apk-output/VAANAM-AI-Android.apk
+          retention-days: 90
+
+      - name: Publish APK to GitHub Release (latest-android)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: "VAANAM AI — Android APK (Latest)"
+          body: |
+            Install **VAANAM AI** directly on your Android phone:
+            1. Download **VAANAM-AI-Android.apk** below.
+            2. Tap the downloaded APK on your phone and allow *Install from unknown sources* if prompted.
+            3. Grant Location permission when prompted for automatic live local weather & radar.
+          files: apk-output/VAANAM-AI-Android.apk
+          make_latest: true
