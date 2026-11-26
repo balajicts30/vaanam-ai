@@ -1,6 +1,7 @@
 package com.vaanamai.weather.widget
 
 import android.content.Context
+import android.content.Intent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -8,6 +9,7 @@ import androidx.compose.ui.unit.sp
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.Image
+import androidx.glance.LocalContext
 import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
@@ -59,7 +61,7 @@ class VaanamMinimalWidget : GlanceAppWidget() {
                 .background(bg)
                 .cornerRadius(20.dp)
                 .padding(14.dp)
-                .clickable(actionStartActivity<MainActivity>()),
+                .clickable(actionStartActivity(Intent(LocalContext.current, MainActivity::class.java))),
             verticalAlignment = Alignment.Vertical.CenterVertically
         ) {
             Row(
