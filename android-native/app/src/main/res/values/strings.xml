@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Vaanam AI</string>
+    <string name="widget_minimal_label">Vaanam Minimal (2x2)</string>
+    <string name="widget_minimal_desc">Clean live temperature, sky condition, and High/Low for your city.</string>
+    <string name="widget_forecast_label">Vaanam AI Forecast Strip (4x2)</string>
+    <string name="widget_forecast_desc">Live weather, 1-line AI summary, and next 4 three-hour forecast slots.</string>
+</resources>

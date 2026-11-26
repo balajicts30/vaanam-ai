@@ -1,0 +1,62 @@
+name: Build Native Android APK (Vaanam AI)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-native-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build Debug APK
+        working-directory: android-native
+        run: gradle assembleDebug --no-daemon
+
+      - name: Prepare APK for download
+        run: |
+          mkdir -p apk-output
+          cp android-native/app/build/outputs/apk/debug/app-debug.apk apk-output/VAANAM-AI-Android.apk
+
+      - name: Upload VAANAM-AI-Android.apk Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: VAANAM-AI-Native-APK
+          path: apk-output/VAANAM-AI-Android.apk
+          retention-days: 90
+
+      - name: Publish Native APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-native-latest
+          name: "Vaanam AI — Native Android App & Widgets (APK)"
+          body: |
+            Native Kotlin + Jetpack Compose + Jetpack Glance Android build of **Vaanam AI**.
+
+            ### Included:
+            - Sleek dark-first Material 3 UI (`#0B0F17` / `#131A26` / `#38BDF8`) with adaptive Light mode
+            - Live present-sky accuracy + ECMWF IFS 0.25° vs NOAA GFS model consensus
+            - AI Weather Analyst brief + interactive precipitation radar + 16-day extended outlook
+            - **2 Home Screen Widgets**: *Vaanam Minimal (2x2)* and *Vaanam AI Forecast Strip (4x2)* with 30-min WorkManager sync
+            - One-tap Vaanam Story ShareSheet card generator
+
+            Download **VAANAM-AI-Android.apk** below and install directly on your Android phone.
+          files: apk-output/VAANAM-AI-Android.apk
+          make_latest: true
