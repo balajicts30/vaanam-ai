@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Radar
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material3.Button
@@ -54,13 +54,14 @@ fun VaanamAppRoot(viewModel: WeatherViewModel) {
     var showCityPicker by remember { mutableStateOf(false) }
     var showAiBrief by remember { mutableStateOf(false) }
 
-    val requestLastLocation = {
+    val requestLastLocation: () -> Unit = {
         val fused = LocationServices.getFusedLocationProviderClient(context)
         fused.lastLocation.addOnSuccessListener { loc ->
             if (loc != null) {
                 viewModel.selectCoordinates(loc.latitude, loc.longitude)
             }
         }
+        Unit
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -71,7 +72,7 @@ fun VaanamAppRoot(viewModel: WeatherViewModel) {
         if (granted) requestLastLocation()
     }
 
-    val onLocateMe = {
+    val onLocateMe: () -> Unit = {
         val hasFine = ContextCompat.checkSelfPermission(
             context, Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
@@ -101,7 +102,7 @@ fun VaanamAppRoot(viewModel: WeatherViewModel) {
                 ) {
                     val tabs = listOf(
                         Triple("Forecast", Icons.Rounded.WbSunny, 0),
-                        Triple("Models & Radar", Icons.Rounded.Radar, 1),
+                        Triple("Models & Radar", Icons.Rounded.Map, 1),
                         Triple("Share Card", Icons.Rounded.Share, 2)
                     )
                     tabs.forEach { (label, icon, idx) ->

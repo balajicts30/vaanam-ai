@@ -28,7 +28,17 @@ jobs:
 
       - name: Build Debug APK
         working-directory: android-native
-        run: gradle assembleDebug --no-daemon
+        shell: bash
+        run: |
+          set +e
+          gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            grep -E "^e: |error:|What went wrong|Could not resolve|Execution failed|AAPT" build.log | head -n 9 | while read -r line; do
+              echo "::error::${line:0:900}"
+            done
+          fi
+          exit $status
 
       - name: Prepare APK for download
         run: |
